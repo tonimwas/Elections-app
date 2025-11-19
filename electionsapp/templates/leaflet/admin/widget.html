@@ -1,0 +1,52 @@
+<style>
+.leaflet-container {
+    height: 600px;
+    width: 100%;
+}
+</style>
+
+<div id="geom_map" class="leaflet-container"></div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+(function() {
+    var map = L.map('geom_map').setView([0.5, 37.0], 7);
+    
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    
+    // Add geometry if it exists
+    var geomValue = document.querySelector('textarea[name="geom"], input[name="geom"]').value;
+    if (geomValue) {
+        try {
+            var geojson = JSON.parse(geomValue);
+            var layer = L.geoJSON(geojson, {
+                style: {
+                    color: '#FF5722',
+                    weight: 3,
+                    fillColor: '#FF9800',
+                    fillOpacity: 0.3
+                }
+            }).addTo(map);
+            
+            if (geojson.type === 'FeatureCollection' && geojson.features.length > 0) {
+                map.fitBounds(layer.getBounds());
+            } else if (geojson.coordinates || geojson.geometry) {
+                map.fitBounds(layer.getBounds());
+            }
+        } catch(e) {
+            console.error('Error loading geometry:', e);
+        }
+    }
+})();
+</script>
+
+<!-- Raw geometry display for editing -->
+<div style="margin-top: 10px;">
+    <label for="geom_raw">Geometry (GeoJSON/WKT):</label><br>
+    <textarea id="geom_raw" name="geom" rows="5" style="width: 100%;">{{ geom|default:'' }}</textarea>
+</div>

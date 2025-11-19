@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block title %}Constituencies Map | {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Constituencies Map</h1>
+<div id="map" style="height: 600px; width: 100%;"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script>
+    (function() {
+        var map = L.map('map').setView([0.5, 37.0], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        fetch('./geojson/')
+            .then(r => r.json())
+            .then(fc => {
+                var layer = L.geoJSON(fc).addTo(map);
+                map.fitBounds(layer.getBounds());
+            });
+    })();
+</script>
+{% endblock %}
