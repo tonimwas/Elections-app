@@ -20,10 +20,9 @@
     }).addTo(map);
     
     // Add geometry if it exists
-    var geomValue = document.querySelector('textarea[name="geom"], input[name="geom"]').value;
-    if (geomValue) {
+    var geojson = JSON.parse('{{ geom_geojson|default:"null"|escapejs }}');
+    if (geojson) {
         try {
-            var geojson = JSON.parse(geomValue);
             var layer = L.geoJSON(geojson, {
                 style: {
                     color: '#FF5722',
@@ -32,8 +31,8 @@
                     fillOpacity: 0.3
                 }
             }).addTo(map);
-            
-            if (geojson.type === 'FeatureCollection' && geojson.features.length > 0) {
+
+            if (geojson.type === 'FeatureCollection' && geojson.features && geojson.features.length > 0) {
                 map.fitBounds(layer.getBounds());
             } else if (geojson.coordinates || geojson.geometry) {
                 map.fitBounds(layer.getBounds());
@@ -48,5 +47,5 @@
 <!-- Raw geometry display for editing -->
 <div style="margin-top: 10px;">
     <label for="geom_raw">Geometry (GeoJSON/WKT):</label><br>
-    <textarea id="geom_raw" name="geom" rows="5" style="width: 100%;">{{ geom|default:'' }}</textarea>
+    <textarea id="geom_raw" rows="5" style="width: 100%;" readonly>{{ geom_raw|default:'' }}</textarea>
 </div>

@@ -10,6 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+import sys
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -37,6 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.gis',
+    'rest_framework',
+    'leaflet',
     'electionsapp',
 ]
 
@@ -53,7 +58,25 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'elections.urls'
 
 import os
-os.environ["GDAL_LIBRARY_PATH"] = r"C:\OSGeo4W\bin\gdal.dll"
+import sys
+from pathlib import Path
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# use this if setting up on Windows 10 with GDAL installed from OSGeo4W using defaults
+
+if os.name == 'nt':
+    env_base = Path(sys.prefix)
+    osgeo_path = env_base / 'Lib' / 'site-packages' / 'osgeo'
+    if osgeo_path.exists():
+        current_path = os.environ.get('PATH', '')
+        os.environ['PATH'] = f"{osgeo_path};{current_path}" if current_path else str(osgeo_path)
+        proj_data = osgeo_path / 'data' / 'proj'
+        if proj_data.exists():
+            os.environ['PROJ_LIB'] = str(proj_data)
+        gdal_dll = osgeo_path / 'gdal.dll'
+        if gdal_dll.exists():
+            os.environ['GDAL_LIBRARY_PATH'] = str(gdal_dll)
 
 TEMPLATES = [
     {
@@ -72,13 +95,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'elections.wsgi.application'
 
+GDAL_LIBRARY_PATH = r'd:\projects2025\electionssystem\data\webapp\electenv\lib\site-packages\osgeo\gdal.dll'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': 'elections',
         'USER': 'postgres',
         'PASSWORD': '1234',

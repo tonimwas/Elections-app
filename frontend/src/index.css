@@ -1,0 +1,109 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #1f2937;
+  background-color: #f3f4f6;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  min-height: 400px;
+  border-radius: 0.75rem;
+}
+
+.sidebar-transition {
+  transition: transform 0.3s ease-in-out;
+}
+
+.party-jubilee {
+  background-color: #e53e3e;
+}
+
+.party-uda {
+  background-color: #38a169;
+}
+
+.party-odm {
+  background-color: #ed8936;
+}
+
+.party-independent {
+  background-color: #4299e1;
+}
+
+.party-others {
+  background-color: #a0aec0;
+}
+
+.vote-yes {
+  background-color: #38a169;
+}
+
+.vote-no {
+  background-color: #e53e3e;
+}
+
+.vote-abstain {
+  background-color: #ecc94b;
+}
+
+.loader {
+  border-top-color: #4299e1;
+  animation: spinner 1.5s linear infinite;
+}
+
+@keyframes spinner {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.tooltip {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 640px) {
+  .mobile-filters {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    transform: translateY(100%);
+  }
+
+  .mobile-filters.open {
+    transform: translateY(0);
+  }
+}

@@ -1,13 +1,5 @@
 from django.db import models
-from django.utils import timezone
-from django.contrib.auth.models import AbstractUser
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
-import os
-
-# Create your models here.
+from django.contrib.gis.db import models as gis_models
 
 
 class Constituency(models.Model):
@@ -18,8 +10,17 @@ class Constituency(models.Model):
     impeachment_vote = models.CharField(max_length=255)
     county = models.CharField(max_length=255)
     budget_vote = models.CharField(max_length=255)
-    # store WKT or GeoJSON string representation of the geometry (temporary solution)
-    geom = models.TextField(help_text="Geographic boundary of the ward (WKT/GeoJSON format)", null=True, blank=True)
+    election_results = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Percentage results for 2024 election by candidate",
+    )
+    geom = gis_models.MultiPolygonField(
+        srid=4326,
+        help_text="Geographic boundary of the constituency",
+        null=True,
+        blank=True,
+    )
 
     def __str__(self):
         return self.name
