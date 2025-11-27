@@ -27,6 +27,20 @@ body {
   flex-direction: column;
 }
 
+
+.left-panel {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  min-width: 450px;
+  z-index: 50;
+  padding: 20px;
+}
+
+.left-panel.open {
+  transform: translateX(0);
+}
+
 .leaflet-container {
   height: 100%;
   width: 100%;

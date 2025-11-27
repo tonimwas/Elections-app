@@ -375,50 +375,57 @@ function App() {
         <aside className="hidden md:block w-64 bg-white shadow-md p-4 overflow-y-auto">
           <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">Filters</h2>
 
-          <FilterSelect
-            label="County"
-            value={filters.county}
-            placeholder="All Counties"
-            onChange={(value) => handleFilterChange('county', value)}
-            options={counties.map((county) => ({ value: county, label: county }))}
-          />
+          <div className="filter space-y-4">
+            <FilterSelect
+              label="County"
+              value={filters.county}
+              placeholder="All Counties"
+              onChange={(value) => handleFilterChange('county', value)}
+              options={counties.map((county) => ({ value: county, label: county }))}
+            />
 
-          <FilterSelect
-            label="Party"
-            value={filters.party}
-            placeholder="All Parties"
-            onChange={(value) => handleFilterChange('party', value)}
-            options={parties}
-          />
+            <FilterSelect
+              label="Party"
+              value={filters.party}
+              placeholder="All Parties"
+              onChange={(value) => handleFilterChange('party', value)}
+              options={parties}
+            />
 
-          <FilterSelect
-            label="Impeachment Vote"
-            value={filters.impeachment}
-            placeholder="All Votes"
-            onChange={(value) => handleFilterChange('impeachment', value)}
-            options={['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))}
-          />
+            <FilterSelect
+              label="Impeachment Vote"
+              value={filters.impeachment}
+              placeholder="All Votes"
+              onChange={(value) => handleFilterChange('impeachment', value)}
+              options={['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))}
+            />
 
-          <FilterSelect
-            label="2024 Election Candidate"
-            value={filters.electionCandidate}
-            placeholder="All Candidates"
-            onChange={(value) => handleFilterChange('electionCandidate', value)}
-            options={candidates.map((candidate) => ({ value: candidate, label: candidate }))}
-          />
+            <FilterSelect
+              label="2024 Election Candidate"
+              value={filters.electionCandidate}
+              placeholder="All Candidates"
+              onChange={(value) => handleFilterChange('electionCandidate', value)}
+              options={candidates.map((candidate) => ({ value: candidate, label: candidate }))}
+            />
 
-          <button
-            type="button"
-            className="mt-4 w-full bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition"
-            onClick={handleResetFilters}
-          >
-            Reset All Filters
-          </button>
+            <button
+              type="button"
+              className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition"
+              onClick={handleResetFilters}
+            >
+              Reset All Filters
+            </button>
+          </div>
+
+          <SummaryBlock
+            summary={summary}
+            parties={parties}
+            colorMode={colorMode}
+            onColorModeChange={handleColorModeChange}
+          />
         </aside>
 
-        <div
-          className={`md:hidden mobile-filters sidebar-transition bg-white shadow-md p-4 rounded-t-lg ${mobileFiltersOpen ? 'open' : ''}`}
-        >
+        <div className={`left-panel ${mobileFiltersOpen ? 'open' : ''}`}>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">Filters</h2>
             <button
@@ -430,139 +437,66 @@ function App() {
             </button>
           </div>
 
-          <FilterSelect
-            label="County"
-            value={filters.county}
-            placeholder="All Counties"
-            onChange={(value) => handleFilterChange('county', value)}
-            options={counties.map((county) => ({ value: county, label: county }))}
-          />
+          <div className="filter space-y-4">
+            <FilterSelect
+              label="County"
+              value={filters.county}
+              placeholder="All Counties"
+              onChange={(value) => handleFilterChange('county', value)}
+              options={counties.map((county) => ({ value: county, label: county }))}
+            />
 
-          <FilterSelect
-            label="Party"
-            value={filters.party}
-            placeholder="All Parties"
-            onChange={(value) => handleFilterChange('party', value)}
-            options={parties}
-          />
+            <FilterSelect
+              label="Party"
+              value={filters.party}
+              placeholder="All Parties"
+              onChange={(value) => handleFilterChange('party', value)}
+              options={parties}
+            />
 
-          <FilterSelect
-            label="Impeachment Vote"
-            value={filters.impeachment}
-            placeholder="All Votes"
-            onChange={(value) => handleFilterChange('impeachment', value)}
-            options={['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))}
-          />
+            <FilterSelect
+              label="Impeachment Vote"
+              value={filters.impeachment}
+              placeholder="All Votes"
+              onChange={(value) => handleFilterChange('impeachment', value)}
+              options={['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))}
+            />
 
-          <FilterSelect
-            label="2024 Election Candidate"
-            value={filters.electionCandidate}
-            placeholder="All Candidates"
-            onChange={(value) => handleFilterChange('electionCandidate', value)}
-            options={candidates.map((candidate) => ({ value: candidate, label: candidate }))}
-          />
+            <FilterSelect
+              label="2024 Election Candidate"
+              value={filters.electionCandidate}
+              placeholder="All Candidates"
+              onChange={(value) => handleFilterChange('electionCandidate', value)}
+              options={candidates.map((candidate) => ({ value: candidate, label: candidate }))}
+            />
 
-          <div className="flex space-x-2 mt-4">
-            <button
-              type="button"
-              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md"
-              onClick={() => setMobileFiltersOpen(false)}
-            >
-              Apply
-            </button>
-            <button
-              type="button"
-              className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md"
-              onClick={handleResetFilters}
-            >
-              Reset
-            </button>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md"
+                onClick={() => setMobileFiltersOpen(false)}
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md"
+                onClick={handleResetFilters}
+              >
+                Reset
+              </button>
+            </div>
           </div>
+
+          <SummaryBlock
+            summary={summary}
+            parties={parties}
+            colorMode={colorMode}
+            onColorModeChange={handleColorModeChange}
+          />
         </div>
 
         <div className="flex-1 flex flex-col">
-          <section className="bg-white shadow-md p-4 mb-4 mx-4 mt-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-4">Overview Summary</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <SummaryCard
-                title="Total Constituencies"
-                value={summary.total}
-                className="bg-blue-50"
-              />
-
-              <div className="bg-green-50 p-4 rounded-lg shadow-sm">
-                <p className="text-sm text-green-700 font-medium">Parties</p>
-                <div className="flex flex-wrap mt-2 gap-2">
-                  {parties.map((party) => (
-                    <span
-                      key={party.value}
-                      className={`px-2 py-1 rounded text-xs text-white ${
-                        PARTY_BADGE_KEYS.has(party.value) ? `party-${party.value}` : 'party-others'
-                      }`}
-                    >
-                      {party.label}: {summary.parties[party.value] || 0}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 p-4 rounded-lg shadow-sm">
-                <p className="text-sm text-yellow-700 font-medium">Impeachment Votes</p>
-                <div className="flex flex-wrap mt-2 gap-2">
-                  {[
-                    { key: 'yes', label: 'YES' },
-                    { key: 'no', label: 'NO' },
-                    { key: 'abstain', label: 'ABSTAIN' },
-                  ].map((vote) => (
-                    <span
-                      key={vote.key}
-                      className={`px-2 py-1 rounded text-xs text-white vote-${vote.key}`}
-                    >
-                      {vote.label}: {summary.impeachment[vote.key] || 0}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-purple-50 p-4 rounded-lg shadow-sm">
-                <p className="text-sm text-purple-700 font-medium">2024 Election</p>
-                <p className="text-sm mt-2">
-                  Winner:{' '}
-                  <span className="font-bold">
-                    {summary.leadingCandidate || 'N/A'}
-                  </span>
-                </p>
-                <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                  <div
-                    className="bg-purple-600 h-2.5 rounded-full"
-                    style={{ width: `${summary.leadingShare}%` }}
-                  />
-                </div>
-                <p className="text-xs text-right mt-1">{summary.leadingShare}% of constituencies</p>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-sm font-medium mb-2">Color Map By:</p>
-              <div className="flex flex-wrap gap-2">
-                {COLOR_MODES.map((mode) => (
-                  <button
-                    key={mode.key}
-                    type="button"
-                    className={`color-toggle px-3 py-1 rounded-md text-sm ${
-                      colorMode === mode.key
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700'
-                    }`}
-                    onClick={() => handleColorModeChange(mode.key)}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
           <section className="flex-1 mx-4 mb-4 bg-white rounded-lg shadow-md relative">
             <div ref={mapContainerRef} className="w-full h-full min-h-[500px] rounded-lg" />
             {(loading || error) && (
@@ -712,6 +646,80 @@ const FilterSelect = ({ label, value, placeholder, onChange, options }) => (
         </option>
       ))}
     </select>
+  </div>
+)
+
+const SummaryBlock = ({ summary, parties, colorMode, onColorModeChange }) => (
+  <section className="summery bg-white shadow-md rounded-lg p-4 mt-6">
+    <h3 className="text-lg font-semibold mb-4">Overview Summary</h3>
+    <div className="grid grid-cols-1 gap-4">
+      <SummaryCard title="Total Constituencies" value={summary.total} className="bg-blue-50" />
+
+      <div className="bg-green-50 p-4 rounded-lg shadow-sm">
+        <p className="text-sm text-green-700 font-medium">Parties</p>
+        <div className="flex flex-wrap mt-2 gap-2">
+          {parties.map((party) => (
+            <span
+              key={party.value}
+              className={`px-2 py-1 rounded text-xs text-white ${
+                PARTY_BADGE_KEYS.has(party.value) ? `party-${party.value}` : 'party-others'
+              }`}
+            >
+              {party.label}: {summary.parties[party.value] || 0}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <SummaryBreakdown title="Impeachment Votes" data={summary.impeachment} />
+      {summary.budget && <SummaryBreakdown title="2024 Budget Vote" data={summary.budget} />}
+
+      <div className="bg-purple-50 p-4 rounded-lg shadow-sm">
+        <p className="text-sm text-purple-700 font-medium">2024 Election</p>
+        <p className="text-sm mt-2">
+          Winner: <span className="font-bold">{summary.leadingCandidate || 'N/A'}</span>
+        </p>
+        <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+          <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${summary.leadingShare}%` }} />
+        </div>
+        <p className="text-xs text-right mt-1">{summary.leadingShare}% of constituencies</p>
+      </div>
+    </div>
+
+    <div className="mt-6">
+      <p className="text-sm font-medium mb-2">Color Map By:</p>
+      <div className="flex flex-wrap gap-2">
+        {COLOR_MODES.map((mode) => (
+          <button
+            key={mode.key}
+            type="button"
+            className={`color-toggle px-3 py-1 rounded-md text-sm ${
+              colorMode === mode.key ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+            }`}
+            onClick={() => onColorModeChange(mode.key)}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  </section>
+)
+
+const SummaryBreakdown = ({ title, data }) => (
+  <div className="bg-yellow-50 p-4 rounded-lg shadow-sm">
+    <p className="text-sm text-yellow-700 font-medium">{title}</p>
+    <div className="flex flex-wrap mt-2 gap-2">
+      {[
+        { key: 'yes', label: 'YES' },
+        { key: 'no', label: 'NO' },
+        { key: 'abstain', label: 'ABSTAIN' },
+      ].map((vote) => (
+        <span key={vote.key} className={`px-2 py-1 rounded text-xs text-white vote-${vote.key}`}>
+          {vote.label}: {data?.[vote.key] || 0}
+        </span>
+      ))}
+    </div>
   </div>
 )
 
