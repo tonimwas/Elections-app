@@ -16,6 +16,7 @@ const DEFAULT_ZOOM = 6.3
 const COLOR_MODES = [
   { key: 'party', label: 'Party' },
   { key: 'impeachment', label: 'Impeachment Vote' },
+  { key: 'budget', label: '2024 Budget Vote' },
   { key: 'election', label: '2024 Election' },
 ]
 const PARTY_COLORS = {
@@ -30,6 +31,11 @@ const VOTE_COLORS = {
   no: '#e53e3e',
   abstain: '#ecc94b',
 }
+const BUDGET_COLORS = {
+  yes: '#2563eb',
+  no: '#b91c1c',
+  abstain: '#d97706',
+}
 const ELECTION_COLOR_PALETTE = ['#805ad5', '#dd6b20', '#3182ce', '#f56565', '#38b2ac', '#2b6cb0', '#d53f8c']
 const PARTY_BADGE_KEYS = new Set(['jubilee', 'uda', 'odm', 'independent', 'others'])
 const KENYA_BOUNDS = L.latLngBounds(
@@ -41,6 +47,11 @@ const KENYA_BOUNDS = L.latLngBounds(
 const MAP_PADDING = [20, 20]
 
 const normalizeKey = (value = '') => value.toString().toLowerCase().trim()
+const VOTE_OPTIONS = [
+  { key: 'yes', label: 'YES' },
+  { key: 'no', label: 'NO' },
+  { key: 'abstain', label: 'ABSTAIN' },
+]
 
 const normalizeElectionResults = (results) => {
   if (!results || typeof results !== 'object') {
@@ -66,6 +77,7 @@ const determineWinner = (results) => {
 
 const getPartyColor = (partyKey) => PARTY_COLORS[partyKey] || PARTY_COLORS.others
 const getVoteColor = (voteKey) => VOTE_COLORS[voteKey] || '#a0aec0'
+const getBudgetColor = (voteKey) => BUDGET_COLORS[voteKey] || '#4b5563'
 
 function useElectionColors() {
   const cacheRef = useRef({})
@@ -236,6 +248,7 @@ function App() {
       total: filteredFeatures.length,
       parties: {},
       impeachment: { yes: 0, no: 0, abstain: 0 },
+      budget: { yes: 0, no: 0, abstain: 0 },
       electionWins: {},
     }
 
@@ -247,6 +260,11 @@ function App() {
       const impeachmentKey = props.impeachment_key
       if (impeachmentKey && totals.impeachment[impeachmentKey] !== undefined) {
         totals.impeachment[impeachmentKey] += 1
+      }
+
+      const budgetKey = props.budget_key
+      if (budgetKey && totals.budget[budgetKey] !== undefined) {
+        totals.budget[budgetKey] += 1
       }
 
       const winner = determineWinner(props.election_results)
@@ -547,6 +565,12 @@ function App() {
               </div>
 
               <div className="map-frame">
+                <MapLegend
+                  mode={colorMode}
+                  parties={parties}
+                  features={features}
+                  getElectionColor={getElectionColor}
+                />
                 <div ref={mapContainerRef} className="map-canvas" />
               </div>
             </div>
@@ -723,7 +747,9 @@ const SummaryBlock = ({ summary, parties, colorMode, onColorModeChange }) => (
       </div>
 
       <SummaryBreakdown title="Impeachment Votes" data={summary.impeachment} />
-      {summary.budget && <SummaryBreakdown title="2024 Budget Vote" data={summary.budget} />}
+      {summary.budget && (
+        <SummaryBreakdown title="2024 Budget Vote" data={summary.budget} colorMap={BUDGET_COLORS} />
+      )}
 
       <div className="bg-purple-50 p-4 rounded-lg shadow-sm">
         <p className="text-sm text-purple-700 font-medium">2024 Election</p>
@@ -757,22 +783,100 @@ const SummaryBlock = ({ summary, parties, colorMode, onColorModeChange }) => (
   </section>
 )
 
-const SummaryBreakdown = ({ title, data }) => (
+const SummaryBreakdown = ({ title, data, colorMap = VOTE_COLORS }) => (
   <div className="bg-yellow-50 p-4 rounded-lg shadow-sm">
     <p className="text-sm text-yellow-700 font-medium">{title}</p>
     <div className="flex flex-wrap mt-2 gap-2">
-      {[
-        { key: 'yes', label: 'YES' },
-        { key: 'no', label: 'NO' },
-        { key: 'abstain', label: 'ABSTAIN' },
-      ].map((vote) => (
-        <span key={vote.key} className={`px-2 py-1 rounded text-xs text-white vote-${vote.key}`}>
+      {VOTE_OPTIONS.map((vote) => (
+        <span
+          key={vote.key}
+          className="px-2 py-1 rounded text-xs text-white"
+          style={{ backgroundColor: colorMap[vote.key] || '#4b5563' }}
+        >
           {vote.label}: {data?.[vote.key] || 0}
         </span>
       ))}
     </div>
   </div>
 )
+
+const MapLegend = ({ mode, parties, features, getElectionColor }) => {
+  const partyLegendSource = parties.length
+    ? parties
+    : Array.from(Object.keys(PARTY_COLORS)).map((value) => ({
+        value,
+        label: value.charAt(0).toUpperCase() + value.slice(1),
+      }))
+
+  const electionItems = useMemo(() => {
+    if (mode !== 'election') {
+      return []
+    }
+    const seen = new Map()
+    features.forEach((feature) => {
+      Object.keys(feature.properties?.election_results || {}).forEach((candidate) => {
+        if (!seen.has(candidate)) {
+          seen.set(candidate, getElectionColor(candidate))
+        }
+      })
+    })
+    return Array.from(seen.entries())
+      .slice(0, 8)
+      .map(([label, color]) => ({ label, color }))
+  }, [mode, features, getElectionColor])
+
+  const legendItems = useMemo(() => {
+    if (mode === 'party') {
+      return partyLegendSource.map((party) => ({
+        label: party.label,
+        color: PARTY_COLORS[party.value] || PARTY_COLORS.others,
+      }))
+    }
+    if (mode === 'impeachment') {
+      return VOTE_OPTIONS.map((option) => ({
+        label: `${option.label} vote`,
+        color: VOTE_COLORS[option.key],
+      }))
+    }
+    if (mode === 'budget') {
+      return VOTE_OPTIONS.map((option) => ({
+        label: `${option.label} budget vote`,
+        color: BUDGET_COLORS[option.key],
+      }))
+    }
+    if (mode === 'election') {
+      return electionItems.length
+        ? electionItems
+        : [
+            {
+              label: 'Leading candidate per constituency',
+              color: '#7c3aed',
+            },
+          ]
+    }
+    return []
+  }, [mode, partyLegendSource, electionItems])
+
+  return (
+    <div className="map-legend">
+      <p className="map-legend__title">Legend</p>
+      {mode === 'election' && !electionItems.length ? (
+        <p className="map-legend__note">
+          Color shows the leading 2024 candidate per constituency. Candidates appear once data loads.
+        </p>
+      ) : (
+        <ul className="map-legend__list">
+          {legendItems.map((item) => (
+            <li key={item.label} className="map-legend__item">
+              <span className="map-legend__swatch" style={{ backgroundColor: item.color }} />
+              <span>{item.label}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 const SummaryCard = ({ title, value, className }) => (
   <div className={`${className} p-4 rounded-lg shadow-sm`}>
@@ -804,6 +908,9 @@ const VoteBadge = ({ label, value }) => {
 const getStyleForFeature = (props = {}, mode, getElectionColor) => {
   if (mode === 'impeachment') {
     return baseStyle(getVoteColor(props.impeachment_key))
+  }
+  if (mode === 'budget') {
+    return baseStyle(getBudgetColor(props.budget_key))
   }
   if (mode === 'election') {
     const winner = determineWinner(props.election_results)
