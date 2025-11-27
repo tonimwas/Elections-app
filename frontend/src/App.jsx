@@ -12,7 +12,7 @@ L.Icon.Default.mergeOptions({
 })
 
 const DEFAULT_CENTER = [-0.4, 37.8]
-const DEFAULT_ZOOM = 7.3
+const DEFAULT_ZOOM = 6.3
 const COLOR_MODES = [
   { key: 'party', label: 'Party' },
   { key: 'impeachment', label: 'Impeachment Vote' },
