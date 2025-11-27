@@ -11,7 +11,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href,
 })
 
-const DEFAULT_CENTER = [-1.286389, 36.817223]
+const DEFAULT_CENTER = [-0.4, 37.8]
+const DEFAULT_ZOOM = 7.3
 const COLOR_MODES = [
   { key: 'party', label: 'Party' },
   { key: 'impeachment', label: 'Impeachment Vote' },
@@ -31,6 +32,13 @@ const VOTE_COLORS = {
 }
 const ELECTION_COLOR_PALETTE = ['#805ad5', '#dd6b20', '#3182ce', '#f56565', '#38b2ac', '#2b6cb0', '#d53f8c']
 const PARTY_BADGE_KEYS = new Set(['jubilee', 'uda', 'odm', 'independent', 'others'])
+const KENYA_BOUNDS = L.latLngBounds(
+  [
+    [-4.9, 33.5],
+    [5.5, 42.1],
+  ],
+)
+const MAP_PADDING = [20, 20]
 
 const normalizeKey = (value = '') => value.toString().toLowerCase().trim()
 
@@ -149,7 +157,14 @@ function App() {
     if (!mapContainerRef.current || mapRef.current) {
       return
     }
-    mapRef.current = L.map(mapContainerRef.current).setView(DEFAULT_CENTER, 7)
+    mapRef.current = L.map(mapContainerRef.current, {
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
+      maxBounds: KENYA_BOUNDS,
+      maxBoundsViscosity: 1.0,
+      maxZoom: 19,
+      minZoom: DEFAULT_ZOOM,
+    })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
@@ -313,10 +328,6 @@ function App() {
     })
 
     geoJsonLayerRef.current = layer.addTo(mapRef.current)
-    const bounds = layer.getBounds()
-    if (bounds.isValid()) {
-      mapRef.current.fitBounds(bounds, { padding: [20, 20] })
-    }
   }, [filteredFeatures, colorMode, getElectionColor])
 
   const handleFilterChange = (key, value) => {
@@ -329,6 +340,23 @@ function App() {
 
   const handleColorModeChange = (mode) => {
     setColorMode(mode)
+  }
+
+  const handleResetMapView = () => {
+    if (!mapRef.current) {
+      return
+    }
+    mapRef.current.setView(DEFAULT_CENTER, DEFAULT_ZOOM)
+  }
+
+  const handleZoomToSelected = () => {
+    if (!mapRef.current || !selectedFeature) {
+      return
+    }
+    const bounds = L.geoJSON(selectedFeature).getBounds()
+    if (bounds.isValid()) {
+      mapRef.current.fitBounds(bounds, { padding: MAP_PADDING })
+    }
   }
 
   const detailedElectionEntries = useMemo(() => {
@@ -497,8 +525,31 @@ function App() {
         </div>
 
         <div className="flex-1 flex flex-col">
-          <section className="flex-1 mx-4 mb-4 bg-white rounded-lg shadow-md relative">
-            <div ref={mapContainerRef} className="w-full h-full min-h-[500px] rounded-lg" />
+          <section className="flex-1 ml-2 mr-4 mb-4 bg-white rounded-lg shadow-md">
+            <div className="map-pane">
+              <div className="map-pane__actions">
+                <button
+                  type="button"
+                  className="bg-white/95 text-sm font-medium text-gray-800 px-3 py-2 rounded shadow hover:bg-white"
+                  onClick={handleResetMapView}
+                >
+                  Reset map extent
+                </button>
+                {selectedFeature && (
+                  <button
+                    type="button"
+                    className="bg-white/95 text-sm font-medium text-gray-800 px-3 py-2 rounded shadow hover:bg-white"
+                    onClick={handleZoomToSelected}
+                  >
+                    {`Zoom to extent of "${selectedFeature.properties?.name || 'Constituency'}"`}
+                  </button>
+                )}
+              </div>
+
+              <div className="map-frame">
+                <div ref={mapContainerRef} className="map-canvas" />
+              </div>
+            </div>
             {(loading || error) && (
               <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center rounded-lg">
                 {loading ? (
