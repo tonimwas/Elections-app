@@ -29,18 +29,99 @@ body {
 
 
 .left-panel {
-  top: 0;
-  left: 0;
-  bottom: 0;
-  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 300px;
   max-width: 360px;
   width: 22%;
+  padding: 1.5rem;
+  margin: 1.5rem 1.5rem 1.5rem 0;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 45%, #eef2ff 100%);
+  border-radius: 1.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(8px);
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  position: relative;
   z-index: 50;
-  padding: 20px;
 }
 
 .left-panel.open {
   transform: translateX(0);
+}
+
+@media (max-width: 1024px) {
+  .left-panel {
+    width: 100%;
+    max-width: 420px;
+    margin: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .left-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    border-radius: 0 1.5rem 1.5rem 0;
+    transform: translateX(-110%);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    opacity: 0;
+  }
+
+  .left-panel.open {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.color-mode-card {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.color-mode-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+
+.color-mode-card__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+}
+
+.color-mode-button {
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: none;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.85);
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(148, 163, 184, 0.2);
+}
+
+.color-mode-button:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.color-mode-button.is-active {
+  border-color: #2563eb;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #fff;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.3);
 }
 
 .map-frame {
@@ -137,23 +218,21 @@ body {
 }
 
 .party-jubilee {
-  background-color: #e53e3e;
+  background-color: #dc2626;
 }
 
 .party-uda {
-  background-color: #38a169;
+  background-color: #facc15;
+  color: #854d0e;
 }
 
 .party-odm {
-  background-color: #ed8936;
+  background-color: #2563eb;
 }
 
-.party-independent {
-  background-color: #4299e1;
-}
-
+.party-independent,
 .party-others {
-  background-color: #a0aec0;
+  background-color: #6b7280;
 }
 
 .vote-yes {

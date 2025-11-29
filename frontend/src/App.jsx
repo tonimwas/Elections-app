@@ -20,11 +20,11 @@ const COLOR_MODES = [
   { key: 'election', label: '2024 Election' },
 ]
 const PARTY_COLORS = {
-  jubilee: '#e53e3e',
-  uda: '#38a169',
-  odm: '#ed8936',
-  independent: '#4299e1',
-  others: '#a0aec0',
+  jubilee: '#dc2626',
+  uda: '#facc15',
+  odm: '#2563eb',
+  independent: '#6b7280',
+  others: '#6b7280',
 }
 const VOTE_COLORS = {
   yes: '#38a169',
@@ -463,15 +463,30 @@ function App() {
             </button>
           </div>
 
-          <SummaryBlock
-            summary={summary}
-            parties={parties}
-            colorMode={colorMode}
-            onColorModeChange={handleColorModeChange}
-          />
+          <SummaryBlock summary={summary} parties={parties} />
         </aside>
 
         <div className={`left-panel ${mobileFiltersOpen ? 'open' : ''}`}>
+          <div className="color-mode-card mt-6 mb-6">
+            <div className="color-mode-card__header">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Color Map By</p>
+                <p className="text-xs text-gray-500">Choose data layer</p>
+              </div>
+            </div>
+            <div className="color-mode-card__options">
+              {COLOR_MODES.map((mode) => (
+                <button
+                  key={mode.key}
+                  type="button"
+                  className={`color-mode-button ${colorMode === mode.key ? 'is-active' : ''}`}
+                  onClick={() => handleColorModeChange(mode.key)}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">Filters</h2>
             <button
@@ -534,12 +549,7 @@ function App() {
             </div>
           </div>
 
-          <SummaryBlock
-            summary={summary}
-            parties={parties}
-            colorMode={colorMode}
-            onColorModeChange={handleColorModeChange}
-          />
+          <SummaryBlock summary={summary} parties={parties} />
         </div>
 
         <div className="flex-1 flex flex-col">
@@ -724,7 +734,7 @@ const FilterSelect = ({ label, value, placeholder, onChange, options }) => (
   </div>
 )
 
-const SummaryBlock = ({ summary, parties, colorMode, onColorModeChange }) => (
+const SummaryBlock = ({ summary, parties }) => (
   <section className="summery bg-white shadow-md rounded-lg p-4 mt-6">
     <h3 className="text-lg font-semibold mb-4">Overview Summary</h3>
     <div className="grid grid-cols-1 gap-4">
@@ -763,23 +773,7 @@ const SummaryBlock = ({ summary, parties, colorMode, onColorModeChange }) => (
       </div>
     </div>
 
-    <div className="mt-6">
-      <p className="text-sm font-medium mb-2">Color Map By:</p>
-      <div className="flex flex-wrap gap-2">
-        {COLOR_MODES.map((mode) => (
-          <button
-            key={mode.key}
-            type="button"
-            className={`color-toggle px-3 py-1 rounded-md text-sm ${
-              colorMode === mode.key ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-            }`}
-            onClick={() => onColorModeChange(mode.key)}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
-    </div>
+    
   </section>
 )
 
