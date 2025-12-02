@@ -12,11 +12,13 @@ class ConstituencySerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'name',
+            'updated_name',
             'mp',
             'party',
             'impeachment_vote',
             'budget_vote',
             'county',
+            'registered_voters',
             'election_results',
             'geometry',
         )

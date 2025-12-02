@@ -1,3 +1,77 @@
+const getJenksBreaks = (data, desiredClassCount) => {
+  const sorted = data.filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
+  const dataLength = sorted.length
+  if (!dataLength) {
+    return []
+  }
+
+  const classCount = Math.max(1, Math.min(desiredClassCount, dataLength))
+  const lowerClassLimits = Array.from({ length: dataLength + 1 }, () => Array(classCount + 1).fill(0))
+  const varianceCombinations = Array.from({ length: dataLength + 1 }, () => Array(classCount + 1).fill(0))
+
+  for (let i = 1; i <= classCount; i += 1) {
+    varianceCombinations[0][i] = 0
+    lowerClassLimits[0][i] = 1
+    for (let j = 1; j <= dataLength; j += 1) {
+      varianceCombinations[j][i] = Number.POSITIVE_INFINITY
+    }
+  }
+
+  for (let l = 1; l <= dataLength; l += 1) {
+    let sum = 0
+    let sumSquares = 0
+    let count = 0
+
+    for (let m = 1; m <= l; m += 1) {
+      const value = sorted[l - m]
+      count += 1
+      sum += value
+      sumSquares += value * value
+      const variance = sumSquares - (sum * sum) / count
+      if (l === m) {
+        continue
+      }
+      for (let j = 1; j <= classCount; j += 1) {
+        if (varianceCombinations[l][j] >= variance + varianceCombinations[l - count][j - 1]) {
+          lowerClassLimits[l][j] = l - count + 1
+          varianceCombinations[l][j] = variance + varianceCombinations[l - count][j - 1]
+        }
+      }
+    }
+    lowerClassLimits[l][1] = 1
+    varianceCombinations[l][1] = sumSquares - (sum * sum) / count
+  }
+
+  const breaks = Array(classCount + 1).fill(0)
+  breaks[classCount] = sorted[dataLength - 1]
+  breaks[0] = sorted[0]
+
+  let countNum = classCount
+  let k = dataLength
+
+  while (countNum > 1) {
+    const index = lowerClassLimits[k][countNum] - 1
+    breaks[countNum - 1] = sorted[index]
+    k = lowerClassLimits[k][countNum] - 1
+    countNum -= 1
+  }
+
+  return breaks
+}
+
+const normalizeJenksColors = (breaks) => {
+  if (!breaks?.length) {
+    return []
+  }
+  const classCount = breaks.length - 1
+  if (classCount === REGISTERED_VOTER_COLORS.length) {
+    return REGISTERED_VOTER_COLORS
+  }
+  if (classCount < REGISTERED_VOTER_COLORS.length) {
+    return REGISTERED_VOTER_COLORS.slice(REGISTERED_VOTER_COLORS.length - classCount)
+  }
+  return REGISTERED_VOTER_COLORS
+}
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { FaFilter, FaInfoCircle, FaTimes } from 'react-icons/fa'
@@ -18,6 +92,7 @@ const COLOR_MODES = [
   { key: 'impeachment', label: 'Impeachment Vote' },
   { key: 'budget', label: '2024 Budget Vote' },
   { key: 'election', label: '2024 Election' },
+  { key: 'registered_voters', label: 'Registered Voters' },
 ]
 const PARTY_COLORS = {
   jubilee: '#dc2626',
@@ -26,6 +101,19 @@ const PARTY_COLORS = {
   independent: '#6b7280',
   others: '#6b7280',
 }
+const REGISTERED_VOTER_COLORS = [
+  '#f7fbff',
+  '#deebf7',
+  '#c6dbef',
+  '#9ecae1',
+  '#6baed6',
+  '#4292c6',
+  '#2171b5',
+  '#08519c',
+  '#08306b',
+  '#041937',
+]
+const JENKS_CLASS_COUNT = 10
 const VOTE_COLORS = {
   yes: '#38a169',
   no: '#e53e3e',
@@ -78,6 +166,48 @@ const determineWinner = (results) => {
 const getPartyColor = (partyKey) => PARTY_COLORS[partyKey] || PARTY_COLORS.others
 const getVoteColor = (voteKey) => VOTE_COLORS[voteKey] || '#a0aec0'
 const getBudgetColor = (voteKey) => BUDGET_COLORS[voteKey] || '#4b5563'
+const getRegisteredVoterColor = (value, voterClassification) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || !voterClassification?.breaks?.length) {
+    return '#d1d5db'
+  }
+  const { breaks, colors } = voterClassification
+  const classCount = breaks.length - 1
+  for (let index = 0; index < classCount; index += 1) {
+    const upperBound = breaks[index + 1]
+    if (numeric <= upperBound || index === classCount - 1) {
+      return colors[index] || colors[colors.length - 1]
+    }
+  }
+  return '#d1d5db'
+}
+
+const formatNumber = (value) => {
+  if (value === null || value === undefined) {
+    return 'N/A'
+  }
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return value
+  }
+  return numeric.toLocaleString()
+}
+
+const roundToNearestThousand = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return null
+  }
+  return Math.round(numeric / 1000) * 1000
+}
+
+const formatThousandRounded = (value) => {
+  const rounded = roundToNearestThousand(value)
+  if (rounded === null) {
+    return 'N/A'
+  }
+  return formatNumber(rounded)
+}
 
 function useElectionColors() {
   const cacheRef = useRef({})
@@ -140,10 +270,13 @@ function App() {
           const impeachmentKey = normalizeKey(impeachmentLabel)
           const budgetLabel = properties.budget_vote || 'Unknown'
           const budgetKey = normalizeKey(budgetLabel)
+          const updatedName = properties.updated_name?.trim()
+          const displayName = updatedName || properties.name
           return {
             ...feature,
             properties: {
               ...properties,
+              display_name: displayName,
               party_label: partyLabel,
               party_key: PARTY_BADGE_KEYS.has(partyKey) ? partyKey : 'others',
               impeachment_label: impeachmentLabel,
@@ -164,6 +297,20 @@ function App() {
 
     fetchData()
   }, [])
+
+  const registeredVoterClassification = useMemo(() => {
+    const values = features
+      .map((feature) => Number(feature.properties?.registered_voters))
+      .filter((value) => Number.isFinite(value) && value >= 0)
+    if (values.length === 0) {
+      return { breaks: [], colors: [] }
+    }
+    const breaks = getJenksBreaks(values, JENKS_CLASS_COUNT)
+    return {
+      breaks,
+      colors: normalizeJenksColors(breaks),
+    }
+  }, [features])
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) {
@@ -250,6 +397,7 @@ function App() {
       impeachment: { yes: 0, no: 0, abstain: 0 },
       budget: { yes: 0, no: 0, abstain: 0 },
       electionWins: {},
+      registeredVoters: 0,
     }
 
     filteredFeatures.forEach((feature) => {
@@ -271,6 +419,11 @@ function App() {
       if (winner) {
         const key = normalizeKey(winner)
         totals.electionWins[key] = (totals.electionWins[key] || 0) + 1
+      }
+
+      const voters = Number(props.registered_voters)
+      if (Number.isFinite(voters)) {
+        totals.registeredVoters += voters
       }
     })
 
@@ -327,18 +480,33 @@ function App() {
     }
 
     const layer = L.geoJSON(filteredFeatures, {
-      style: (feature) => getStyleForFeature(feature.properties, colorMode, getElectionColor),
+      style: (feature) =>
+        getStyleForFeature(
+          feature.properties,
+          colorMode,
+          getElectionColor,
+          registeredVoterClassification,
+        ),
       onEachFeature: (feature, layerInstance) => {
         const props = feature.properties || {}
         const tooltipContent = `
           <div class="tooltip">
-            <div class="font-bold">${props.name || 'Unknown'}</div>
-            <div>MP: ${props.mp || 'N/A'}</div>
-            <div>Party: ${props.party_label || 'N/A'}</div>
-            <div class="text-xs text-gray-500 mt-1">Click for more details</div>
+            <div class="font-semibold text-xs">${props.name || 'Unknown'}</div>
+            <div class="text-[11px]">MP: ${props.mp || 'N/A'}</div>
+            <div class="text-[11px]">Party: ${props.party_label || 'N/A'}</div>
           </div>
         `
-        layerInstance.bindTooltip(tooltipContent, { sticky: true })
+        layerInstance.bindTooltip(tooltipContent, {
+          sticky: false,
+          direction: 'auto',
+          opacity: 0.9,
+        })
+        layerInstance.on('mouseover', () => {
+          layerInstance.openTooltip()
+        })
+        layerInstance.on('mouseout', () => {
+          layerInstance.closeTooltip()
+        })
         layerInstance.on('click', () => {
           setSelectedFeature(feature)
         })
@@ -346,7 +514,7 @@ function App() {
     })
 
     geoJsonLayerRef.current = layer.addTo(mapRef.current)
-  }, [filteredFeatures, colorMode, getElectionColor])
+  }, [filteredFeatures, colorMode, getElectionColor, registeredVoterClassification])
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
@@ -395,7 +563,7 @@ function App() {
     <div className="bg-gray-100 min-h-screen flex flex-col">
       <header className="bg-white shadow-md">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800">
+          <h1 className="text-xl font-semibold text-gray-800">
             Kenya Constituency Election Visualization
           </h1>
           <div className="flex items-center space-x-3">
@@ -418,8 +586,8 @@ function App() {
       </header>
 
       <main className="flex flex-1 overflow-hidden">
-        <aside className="hidden md:block w-64 bg-white shadow-md p-4 overflow-y-auto">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">Filters</h2>
+        <aside className="hidden md:block w-64 bg-white shadow-md p-3 overflow-y-auto">
+          <h2 className="text-base font-semibold mb-3 pb-2 border-b border-gray-200">Filters</h2>
 
           <div className="filter space-y-4">
             <FilterSelect
@@ -487,8 +655,8 @@ function App() {
               ))}
             </div>
           </div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">Filters</h2>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-base font-semibold">Filters</h2>
             <button
               type="button"
               className="text-gray-500 hover:text-gray-700"
@@ -569,7 +737,10 @@ function App() {
                     className="bg-white/95 text-sm font-medium text-gray-800 px-3 py-2 rounded shadow hover:bg-white"
                     onClick={handleZoomToSelected}
                   >
-                    {`Zoom to extent of "${selectedFeature.properties?.name || 'Constituency'}"`}
+                    {`Zoom to extent of "${selectedFeature.properties?.display_name ||
+                      selectedFeature.properties?.name ||
+                      'Constituency'
+                      }"`}
                   </button>
                 )}
               </div>
@@ -580,6 +751,7 @@ function App() {
                   parties={parties}
                   features={features}
                   getElectionColor={getElectionColor}
+                  registeredVoterClassification={registeredVoterClassification}
                 />
                 <div ref={mapContainerRef} className="map-canvas" />
               </div>
@@ -600,10 +772,10 @@ function App() {
         </div>
 
         <aside
-          className={`${selectedFeature ? 'block' : 'hidden'} w-80 bg-white shadow-md p-4 overflow-y-auto`}
+          className={`${selectedFeature ? 'block' : 'hidden'} w-80 bg-white shadow-md p-3 overflow-y-auto`}
         >
-          <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">Constituency Detail</h2>
+          <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
+            <h2 className="text-base font-semibold">Constituency Detail</h2>
             <button
               type="button"
               className="text-gray-500 hover:text-gray-700"
@@ -614,16 +786,27 @@ function App() {
           </div>
 
           {selectedFeature ? (
-            <div className="space-y-3">
-              <div ref={detailMapContainerRef} className="mb-4 h-48 bg-gray-100 rounded-lg" />
+            <div className="space-y-2 text-sm">
+              <div ref={detailMapContainerRef} className="mb-3 h-40 bg-gray-100 rounded-lg" />
 
-              <DetailRow label="Constituency" value={selectedFeature.properties?.name} />
+              <DetailRow
+                label="Constituency"
+                value={selectedFeature.properties?.display_name || selectedFeature.properties?.name}
+              />
+              {selectedFeature.properties?.updated_name &&
+                selectedFeature.properties?.updated_name !== selectedFeature.properties?.name && (
+                  <DetailRow label="Original Name" value={selectedFeature.properties?.name} />
+                )}
               <DetailRow label="County" value={selectedFeature.properties?.county} />
               <DetailRow label="Member of Parliament" value={selectedFeature.properties?.mp} />
+              <DetailRow
+                label="Registered Voters"
+                value={formatNumber(selectedFeature.properties?.registered_voters)}
+              />
 
-              <div>
-                <p className="text-sm text-gray-500">Party</p>
-                <p className="font-semibold flex items-center space-x-2">
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500">Party</p>
+                <p className="font-medium flex items-center space-x-2 text-sm">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs text-white ${detailPartyClass}`}>
                     {selectedFeature.properties?.party_label}
                   </span>
@@ -636,21 +819,18 @@ function App() {
                   label="Impeachment Vote"
                   value={selectedFeature.properties?.impeachment_label}
                 />
-                <VoteBadge
-                  label="Budget Vote"
-                  value={selectedFeature.properties?.budget_label}
-                />
+                <VoteBadge label="Budget Vote" value={selectedFeature.properties?.budget_label} />
               </div>
 
-              <div>
-                <p className="text-sm text-gray-500 mb-2">2024 Election Results</p>
-                <div className="space-y-2">
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500">2024 Election Results</p>
+                <div className="space-y-1.5">
                   {detailedElectionEntries.length ? (
                     detailedElectionEntries.map(([candidate, percentage]) => (
-                      <div key={candidate} className="text-sm">
+                      <div key={candidate} className="text-xs">
                         <div className="flex justify-between">
                           <span>{candidate}</span>
-                          <span className="font-semibold">{percentage}%</span>
+                          <span className="font-medium">{percentage}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5">
                           <div
@@ -670,7 +850,7 @@ function App() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-500">Select a constituency on the map to see details.</p>
+            <p className="text-xs text-gray-500">Select a constituency on the map to see details.</p>
           )}
         </aside>
       </main>
@@ -717,8 +897,8 @@ function App() {
 }
 
 const FilterSelect = ({ label, value, placeholder, onChange, options }) => (
-  <div className="mb-4">
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  <div className="mb-3">
+    <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
     <select
       className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
       value={value}
@@ -735,10 +915,15 @@ const FilterSelect = ({ label, value, placeholder, onChange, options }) => (
 )
 
 const SummaryBlock = ({ summary, parties }) => (
-  <section className="summery bg-white shadow-md rounded-lg p-4 mt-6">
-    <h3 className="text-lg font-semibold mb-4">Overview Summary</h3>
+  <section className="summery bg-white shadow-md rounded-lg p-3 mt-4">
+    <h3 className="text-base font-semibold mb-3">Overview Summary</h3>
     <div className="grid grid-cols-1 gap-4">
       <SummaryCard title="Total Constituencies" value={summary.total} className="bg-blue-50" />
+      <SummaryCard
+        title="Registered Voters (filtered)"
+        value={summary.registeredVoters ? formatNumber(summary.registeredVoters) : 'N/A'}
+        className="bg-indigo-50"
+      />
 
       <div className="bg-green-50 p-4 rounded-lg shadow-sm">
         <p className="text-sm text-green-700 font-medium">Parties</p>
@@ -746,9 +931,8 @@ const SummaryBlock = ({ summary, parties }) => (
           {parties.map((party) => (
             <span
               key={party.value}
-              className={`px-2 py-1 rounded text-xs text-white ${
-                PARTY_BADGE_KEYS.has(party.value) ? `party-${party.value}` : 'party-others'
-              }`}
+              className={`px-2 py-1 rounded text-xs text-white ${PARTY_BADGE_KEYS.has(party.value) ? `party-${party.value}` : 'party-others'
+                }`}
             >
               {party.label}: {summary.parties[party.value] || 0}
             </span>
@@ -773,7 +957,7 @@ const SummaryBlock = ({ summary, parties }) => (
       </div>
     </div>
 
-    
+
   </section>
 )
 
@@ -794,13 +978,13 @@ const SummaryBreakdown = ({ title, data, colorMap = VOTE_COLORS }) => (
   </div>
 )
 
-const MapLegend = ({ mode, parties, features, getElectionColor }) => {
+const MapLegend = ({ mode, parties, features, getElectionColor, registeredVoterClassification }) => {
   const partyLegendSource = parties.length
     ? parties
     : Array.from(Object.keys(PARTY_COLORS)).map((value) => ({
-        value,
-        label: value.charAt(0).toUpperCase() + value.slice(1),
-      }))
+      value,
+      label: value.charAt(0).toUpperCase() + value.slice(1),
+    }))
 
   const electionItems = useMemo(() => {
     if (mode !== 'election') {
@@ -842,14 +1026,23 @@ const MapLegend = ({ mode, parties, features, getElectionColor }) => {
       return electionItems.length
         ? electionItems
         : [
-            {
-              label: 'Leading candidate per constituency',
-              color: '#7c3aed',
-            },
-          ]
+          {
+            label: 'Leading candidate per constituency',
+            color: '#7c3aed',
+          },
+        ]
+    }
+    if (mode === 'registered_voters' && registeredVoterClassification?.breaks?.length) {
+      const { breaks, colors } = registeredVoterClassification
+      return breaks.slice(0, -1).map((value, index) => ({
+        label: `${formatThousandRounded(value)} – ${formatThousandRounded(
+          breaks[index + 1],
+        )} voters`,
+        color: colors[index] || colors[colors.length - 1],
+      }))
     }
     return []
-  }, [mode, partyLegendSource, electionItems])
+  }, [mode, partyLegendSource, electionItems, registeredVoterClassification])
 
   return (
     <div className="map-legend">
@@ -858,6 +1051,8 @@ const MapLegend = ({ mode, parties, features, getElectionColor }) => {
         <p className="map-legend__note">
           Color shows the leading 2024 candidate per constituency. Candidates appear once data loads.
         </p>
+      ) : mode === 'registered_voters' && !registeredVoterClassification?.breaks?.length ? (
+        <p className="map-legend__note">Registered voter data unavailable for coloring.</p>
       ) : (
         <ul className="map-legend__list">
           {legendItems.map((item) => (
@@ -899,7 +1094,7 @@ const VoteBadge = ({ label, value }) => {
   )
 }
 
-const getStyleForFeature = (props = {}, mode, getElectionColor) => {
+const getStyleForFeature = (props = {}, mode, getElectionColor, registeredVoterClassification) => {
   if (mode === 'impeachment') {
     return baseStyle(getVoteColor(props.impeachment_key))
   }
@@ -909,6 +1104,9 @@ const getStyleForFeature = (props = {}, mode, getElectionColor) => {
   if (mode === 'election') {
     const winner = determineWinner(props.election_results)
     return baseStyle(getElectionColor(winner))
+  }
+  if (mode === 'registered_voters') {
+    return baseStyle(getRegisteredVoterColor(props.registered_voters, registeredVoterClassification))
   }
   return baseStyle(getPartyColor(props.party_key))
 }

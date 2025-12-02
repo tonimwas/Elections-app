@@ -10,6 +10,17 @@ class Constituency(models.Model):
     impeachment_vote = models.CharField(max_length=255)
     county = models.CharField(max_length=255)
     budget_vote = models.CharField(max_length=255)
+    registered_voters = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Total number of registered voters in the constituency",
+    )
+    updated_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Newly updated constituency name",
+    )
     election_results = models.JSONField(
         default=dict,
         blank=True,
