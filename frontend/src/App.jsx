@@ -126,12 +126,6 @@ const BUDGET_COLORS = {
 }
 const ELECTION_COLOR_PALETTE = ['#805ad5', '#dd6b20', '#3182ce', '#f56565', '#38b2ac', '#2b6cb0', '#d53f8c']
 const PARTY_BADGE_KEYS = new Set(['jubilee', 'uda', 'odm', 'independent', 'others'])
-const KENYA_BOUNDS = L.latLngBounds(
-  [
-    [-4.9, 33.5],
-    [5.5, 42.1],
-  ],
-)
 const MAP_PADDING = [20, 20]
 
 const normalizeKey = (value = '') => value.toString().toLowerCase().trim()
@@ -227,22 +221,35 @@ function useElectionColors() {
   }
 }
 
+const FILTER_TYPES = [
+  { key: 'county', label: 'County' },
+  { key: 'party', label: 'Party' },
+  { key: 'impeachment', label: 'Impeachment Vote' },
+  { key: 'electionCandidate', label: '2024 Election Candidate' },
+]
+
 const defaultFilters = {
-  county: '',
-  party: '',
-  impeachment: '',
-  electionCandidate: '',
+  county: [],
+  party: [],
+  impeachment: [],
+  electionCandidate: [],
 }
 
 function App() {
   const [features, setFeatures] = useState([])
   const [filters, setFilters] = useState(defaultFilters)
+  const [activeFilterTypes, setActiveFilterTypes] = useState([])
+  const [newFilterType, setNewFilterType] = useState('')
   const [colorMode, setColorMode] = useState('party')
   const [selectedFeature, setSelectedFeature] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [hoveredFeature, setHoveredFeature] = useState(null)
+  const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 })
+  const [expandedFilters, setExpandedFilters] = useState({})
+  const [hoveredFilter, setHoveredFilter] = useState(null)
 
   const mapContainerRef = useRef(null)
   const mapRef = useRef(null)
@@ -250,6 +257,7 @@ function App() {
   const detailMapContainerRef = useRef(null)
   const detailMapRef = useRef(null)
   const detailLayerRef = useRef(null)
+  const selectedLayerRef = useRef(null)
   const getElectionColor = useElectionColors()
 
   useEffect(() => {
@@ -319,15 +327,37 @@ function App() {
     mapRef.current = L.map(mapContainerRef.current, {
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
-      maxBounds: KENYA_BOUNDS,
-      maxBoundsViscosity: 1.0,
       maxZoom: 19,
-      minZoom: DEFAULT_ZOOM,
     })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(mapRef.current)
+
+
+    // Handle window resize to recenter map
+    const handleResize = () => {
+      if (mapRef.current) {
+        setTimeout(() => {
+          mapRef.current.invalidateSize()
+          if (geoJsonLayerRef.current) {
+            const bounds = geoJsonLayerRef.current.getBounds()
+            if (bounds.isValid()) {
+              mapRef.current.fitBounds(bounds, { padding: [50, 50] })
+            } else {
+              // Don't fit to any bounds when no geojson layer
+            }
+          } else {
+            // Don't fit to any bounds when no geojson layer
+          }
+        }, 100)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
   }, [])
 
   useEffect(() => {
@@ -362,30 +392,126 @@ function App() {
     }, 100)
   }, [selectedFeature])
 
+  // Center map and highlight selected feature - optimized
+  useEffect(() => {
+    if (!selectedFeature || !mapRef.current || !geoJsonLayerRef.current) {
+      // Remove highlight if no selection
+      if (selectedLayerRef.current) {
+        selectedLayerRef.current.remove()
+        selectedLayerRef.current = null
+      }
+      return
+    }
+
+    // Use requestAnimationFrame for smooth updates
+    requestAnimationFrame(() => {
+      if (!mapRef.current || !selectedFeature) return
+
+      // Center map on selected feature without zooming too much
+      const bounds = L.geoJSON(selectedFeature).getBounds()
+      if (bounds.isValid()) {
+        const center = bounds.getCenter()
+        const currentZoom = mapRef.current.getZoom()
+        // Use current zoom or a reasonable zoom level, don't zoom in too much
+        const targetZoom = Math.min(currentZoom, 8)
+        mapRef.current.setView(center, targetZoom, { animate: false })
+      }
+
+      // Remove previous highlight layer if it exists
+      if (selectedLayerRef.current) {
+        selectedLayerRef.current.remove()
+        selectedLayerRef.current = null
+      }
+
+      // Add highlight layer with blinking green border - on top with higher z-index
+      selectedLayerRef.current = L.geoJSON(selectedFeature, {
+        style: {
+          fillColor: 'transparent',
+          weight: 6,
+          opacity: 1,
+          color: '#10b981',
+          fillOpacity: 0,
+          dashArray: '10, 5',
+        },
+      }).addTo(mapRef.current)
+      
+      // Bring to front to ensure it's visible on top with higher z-index
+      if (selectedLayerRef.current) {
+        selectedLayerRef.current.bringToFront()
+        // Set a higher z-index by manipulating the DOM after a small delay
+        setTimeout(() => {
+          if (selectedLayerRef.current) {
+            selectedLayerRef.current.eachLayer((layer) => {
+              if (layer._path) {
+                layer._path.style.zIndex = '10000'
+                layer._path.style.pointerEvents = 'none'
+                layer._path.style.strokeWidth = '6px'
+              }
+            })
+          }
+        }, 10)
+      }
+    })
+
+    // Add blinking animation that continues until selection changes or reset
+    const intervalId = setInterval(() => {
+      if (selectedLayerRef.current && selectedFeature) {
+        requestAnimationFrame(() => {
+          if (selectedLayerRef.current) {
+            const currentOpacity = selectedLayerRef.current.options.opacity
+            selectedLayerRef.current.setStyle({
+              opacity: currentOpacity === 1 ? 0.3 : 1,
+            })
+          }
+        })
+      }
+    }, 500)
+
+    return () => {
+      clearInterval(intervalId)
+      // Remove layer when effect is cleaned up (when selectedFeature changes or becomes null)
+      if (selectedLayerRef.current) {
+        selectedLayerRef.current.remove()
+        selectedLayerRef.current = null
+      }
+    }
+  }, [selectedFeature])
+
   const filteredFeatures = useMemo(() => {
     return features.filter((feature) => {
       const props = feature.properties || {}
-      if (filters.county && normalizeKey(props.county) !== normalizeKey(filters.county)) {
-        return false
-      }
-      if (filters.party && props.party_key !== normalizeKey(filters.party)) {
-        return false
-      }
-      if (
-        filters.impeachment &&
-        normalizeKey(props.impeachment_label) !== normalizeKey(filters.impeachment)
-      ) {
-        return false
-      }
-      if (filters.electionCandidate) {
-        const target = normalizeKey(filters.electionCandidate)
-        const hasCandidate = Object.keys(props.election_results || {}).some(
-          (candidate) => normalizeKey(candidate) === target,
+      
+      if (filters.county.length > 0) {
+        const countyMatch = filters.county.some(
+          (county) => normalizeKey(props.county) === normalizeKey(county)
         )
-        if (!hasCandidate) {
-          return false
-        }
+        if (!countyMatch) return false
       }
+      
+      if (filters.party.length > 0) {
+        const partyMatch = filters.party.some(
+          (party) => props.party_key === normalizeKey(party)
+        )
+        if (!partyMatch) return false
+      }
+      
+      if (filters.impeachment.length > 0) {
+        const impeachmentMatch = filters.impeachment.some(
+          (impeachment) => normalizeKey(props.impeachment_label) === normalizeKey(impeachment)
+        )
+        if (!impeachmentMatch) return false
+      }
+      
+      if (filters.electionCandidate.length > 0) {
+        const candidateMatch = filters.electionCandidate.some((candidate) => {
+          const target = normalizeKey(candidate)
+          return Object.keys(props.election_results || {}).some(
+            (resultCandidate) => normalizeKey(resultCandidate) === target
+          )
+        })
+        if (!candidateMatch) return false
+      }
+      
       return true
     })
   }, [features, filters])
@@ -471,11 +597,17 @@ function App() {
     if (!mapRef.current) {
       return
     }
+    
+    // Use requestAnimationFrame for smooth layer updates
+    const updateLayer = () => {
+      if (!mapRef.current) return
+      
     if (geoJsonLayerRef.current) {
       geoJsonLayerRef.current.remove()
+        geoJsonLayerRef.current = null
     }
+      
     if (!filteredFeatures.length) {
-      geoJsonLayerRef.current = null
       return
     }
 
@@ -488,41 +620,115 @@ function App() {
           registeredVoterClassification,
         ),
       onEachFeature: (feature, layerInstance) => {
-        const props = feature.properties || {}
-        const tooltipContent = `
-          <div class="tooltip">
-            <div class="font-semibold text-xs">${props.name || 'Unknown'}</div>
-            <div class="text-[11px]">MP: ${props.mp || 'N/A'}</div>
-            <div class="text-[11px]">Party: ${props.party_label || 'N/A'}</div>
-          </div>
-        `
-        layerInstance.bindTooltip(tooltipContent, {
-          sticky: false,
-          direction: 'auto',
-          opacity: 0.9,
-        })
-        layerInstance.on('mouseover', () => {
-          layerInstance.openTooltip()
-        })
+          let hoverTimeout = null
+          
+          layerInstance.on('mouseover', (e) => {
+            if (hoverTimeout) clearTimeout(hoverTimeout)
+            setHoveredFeature(feature)
+            if (mapRef.current && mapContainerRef.current) {
+              const containerPoint = mapRef.current.latLngToContainerPoint(e.latlng)
+              setPopupPosition({
+                x: containerPoint.x,
+                y: containerPoint.y,
+              })
+            }
+          })
+          
         layerInstance.on('mouseout', () => {
-          layerInstance.closeTooltip()
-        })
+            // Small delay to prevent flickering
+            hoverTimeout = setTimeout(() => {
+              setHoveredFeature(null)
+            }, 100)
+          })
+          
+          layerInstance.on('mousemove', (e) => {
+            if (mapRef.current && mapContainerRef.current) {
+              requestAnimationFrame(() => {
+                const containerPoint = mapRef.current.latLngToContainerPoint(e.latlng)
+                setPopupPosition({
+                  x: containerPoint.x,
+                  y: containerPoint.y,
+                })
+              })
+            }
+          })
+          
         layerInstance.on('click', () => {
+            // Use requestAnimationFrame for smooth selection
+            requestAnimationFrame(() => {
           setSelectedFeature(feature)
+            })
         })
       },
     })
 
     geoJsonLayerRef.current = layer.addTo(mapRef.current)
+    }
+
+    requestAnimationFrame(updateLayer)
+
+    // Close popup when map is dragged
+    const closePopup = () => {
+      setHoveredFeature(null)
+    }
+
+    mapRef.current.on('dragstart', closePopup)
+    mapRef.current.on('drag', closePopup)
+    mapRef.current.on('click', (e) => {
+      // Only close if clicking directly on the map (not on a feature)
+      if (e.originalEvent && !e.originalEvent.target.closest('.leaflet-interactive')) {
+        closePopup()
+      }
+    })
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.off('dragstart', closePopup)
+        mapRef.current.off('drag', closePopup)
+        mapRef.current.off('click')
+      }
+    }
   }, [filteredFeatures, colorMode, getElectionColor, registeredVoterClassification])
 
-  const handleFilterChange = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }))
+  const handleFilterValueToggle = (filterType, value) => {
+    setFilters((prev) => {
+      const currentValues = prev[filterType] || []
+      const isSelected = currentValues.includes(value)
+      if (isSelected) {
+        return {
+          ...prev,
+          [filterType]: currentValues.filter((v) => v !== value),
+        }
+      } else {
+        return {
+          ...prev,
+          [filterType]: [...currentValues, value],
+        }
+      }
+    })
+  }
+
+  const handleFilterTypeSelect = (filterType) => {
+    if (filterType && !activeFilterTypes.includes(filterType)) {
+      setActiveFilterTypes((prev) => [...prev, filterType])
+      setNewFilterType('')
+    }
+  }
+
+  const handleRemoveFilter = (filterType) => {
+    setActiveFilterTypes((prev) => prev.filter((type) => type !== filterType))
+    setFilters((prev) => ({ ...prev, [filterType]: [] }))
   }
 
   const handleResetFilters = () => {
     setFilters(defaultFilters)
+    setActiveFilterTypes([])
+    setNewFilterType('')
   }
+
+  const availableFilterTypes = FILTER_TYPES.filter(
+    (type) => !activeFilterTypes.includes(type.key)
+  )
 
   const handleColorModeChange = (mode) => {
     setColorMode(mode)
@@ -532,6 +738,9 @@ function App() {
     if (!mapRef.current) {
       return
     }
+    // Clear selected feature to remove highlight
+    setSelectedFeature(null)
+    // Reset to default view
     mapRef.current.setView(DEFAULT_CENTER, DEFAULT_ZOOM)
   }
 
@@ -586,49 +795,177 @@ function App() {
       </header>
 
       <main className="flex flex-1 overflow-hidden">
-        <aside className="hidden md:block w-64 bg-white shadow-md p-3 overflow-y-auto">
-          <h2 className="text-base font-semibold mb-3 pb-2 border-b border-gray-200">Filters</h2>
-
+        <aside className="hidden md:block w-64 bg-white shadow-sm p-4 overflow-y-auto border-r border-gray-200">
           <div className="filter space-y-4">
-            <FilterSelect
-              label="County"
-              value={filters.county}
-              placeholder="All Counties"
-              onChange={(value) => handleFilterChange('county', value)}
-              options={counties.map((county) => ({ value: county, label: county }))}
-            />
+            {activeFilterTypes.length > 0 && (
+              <div className="space-y-2">
+                {activeFilterTypes.map((filterType) => {
+                  const filterConfig = FILTER_TYPES.find((f) => f.key === filterType)
+                  let options = []
+                  let placeholder = ''
+                  
+                  if (filterType === 'county') {
+                    options = counties.map((county) => ({ value: county, label: county }))
+                    placeholder = 'All Counties'
+                  } else if (filterType === 'party') {
+                    options = parties
+                    placeholder = 'All Parties'
+                  } else if (filterType === 'impeachment') {
+                    options = ['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))
+                    placeholder = 'All Votes'
+                  } else if (filterType === 'electionCandidate') {
+                    options = candidates.map((candidate) => ({ value: candidate, label: candidate }))
+                    placeholder = 'All Candidates'
+                  }
 
-            <FilterSelect
-              label="Party"
-              value={filters.party}
-              placeholder="All Parties"
-              onChange={(value) => handleFilterChange('party', value)}
-              options={parties}
-            />
+                  const selectedValues = filters[filterType] || []
+                  const isExpanded = expandedFilters[filterType] || hoveredFilter === filterType
+                  const selectedCount = selectedValues.length
 
-            <FilterSelect
-              label="Impeachment Vote"
-              value={filters.impeachment}
-              placeholder="All Votes"
-              onChange={(value) => handleFilterChange('impeachment', value)}
-              options={['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))}
-            />
+                  return (
+                    <div 
+                      key={filterType} 
+                      className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
+                      onMouseEnter={() => setHoveredFilter(filterType)}
+                      onMouseLeave={() => {
+                        setHoveredFilter(null)
+                        // Always allow collapsing on mouse leave
+                        setExpandedFilters(prev => ({ ...prev, [filterType]: false }))
+                      }}
+                    >
+                      <div 
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        onClick={() => {
+                          // Prevent dropdown from toggling on click - only allow hover expansion
+                          // setExpandedFilters(prev => ({ 
+                          //   ...prev, 
+                          //   [filterType]: !prev[filterType] 
+                          // }))
+                        }}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <label className="text-sm font-semibold text-gray-700 cursor-pointer">
+                            {filterConfig?.label || filterType}
+                          </label>
+                          {selectedCount > 0 && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              {selectedCount}
+                            </span>
+                          )}
+                        </div>
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="max-h-64 overflow-y-auto border-t border-gray-100">
+                          {options.map((option) => {
+                            const isSelected = selectedValues.includes(option.value)
+                            return (
+                              <label
+                                key={option.value}
+                                className="flex items-center space-x-2 cursor-pointer hover:bg-blue-50 px-3 py-2"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleFilterValueToggle(filterType, option.value)
+                                  if (!isSelected) {
+                                    setExpandedFilters(prev => ({ ...prev, [filterType]: true }))
+                                  }
+                                }}
+                              >
+                                <div className="relative flex items-center justify-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  {isSelected && (
+                                    <svg className="absolute w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <span className="text-sm text-gray-700 flex-1">{option.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                      
+                      {/* Show selected items as chips below the dropdown */}
+                      {selectedValues.length > 0 && (
+                        <div className="px-3 pt-2 border-t border-gray-100">
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedValues.map((value) => {
+                              const option = options.find(opt => opt.value === value)
+                              return (
+                                <span
+                                  key={value}
+                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
+                                >
+                                  <span>{option?.label || value}</span>
+                                  <button
+                                    type="button"
+                                    className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleFilterValueToggle(filterType, value)
+                                    }}
+                                    title="Remove"
+                                  >
+                                    <FaTimes className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
-            <FilterSelect
-              label="2024 Election Candidate"
-              value={filters.electionCandidate}
-              placeholder="All Candidates"
-              onChange={(value) => handleFilterChange('electionCandidate', value)}
-              options={candidates.map((candidate) => ({ value: candidate, label: candidate }))}
-            />
+            {availableFilterTypes.length > 0 && (
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Filter by</label>
+                <select
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  value={newFilterType}
+                  onChange={(e) => {
+                    const selectedType = e.target.value
+                    if (selectedType) {
+                      handleFilterTypeSelect(selectedType)
+                    }
+                  }}
+                >
+                  <option value="">Select filter type...</option>
+                  {availableFilterTypes.map((type) => (
+                    <option key={type.key} value={type.key}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
+            {activeFilterTypes.length > 0 && (
             <button
               type="button"
-              className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition"
+                className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition text-sm"
               onClick={handleResetFilters}
             >
               Reset All Filters
             </button>
+            )}
           </div>
 
           <SummaryBlock summary={summary} parties={parties} />
@@ -656,7 +993,6 @@ function App() {
             </div>
           </div>
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-base font-semibold">Filters</h2>
             <button
               type="button"
               className="text-gray-500 hover:text-gray-700"
@@ -667,37 +1003,165 @@ function App() {
           </div>
 
           <div className="filter space-y-4">
-            <FilterSelect
-              label="County"
-              value={filters.county}
-              placeholder="All Counties"
-              onChange={(value) => handleFilterChange('county', value)}
-              options={counties.map((county) => ({ value: county, label: county }))}
-            />
+            {activeFilterTypes.length > 0 && (
+              <div className="space-y-2">
+                {activeFilterTypes.map((filterType) => {
+                  const filterConfig = FILTER_TYPES.find((f) => f.key === filterType)
+                  let options = []
+                  let placeholder = ''
+                  
+                  if (filterType === 'county') {
+                    options = counties.map((county) => ({ value: county, label: county }))
+                    placeholder = 'All Counties'
+                  } else if (filterType === 'party') {
+                    options = parties
+                    placeholder = 'All Parties'
+                  } else if (filterType === 'impeachment') {
+                    options = ['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))
+                    placeholder = 'All Votes'
+                  } else if (filterType === 'electionCandidate') {
+                    options = candidates.map((candidate) => ({ value: candidate, label: candidate }))
+                    placeholder = 'All Candidates'
+                  }
 
-            <FilterSelect
-              label="Party"
-              value={filters.party}
-              placeholder="All Parties"
-              onChange={(value) => handleFilterChange('party', value)}
-              options={parties}
-            />
+                  const selectedValues = filters[filterType] || []
+                  const isExpanded = expandedFilters[filterType] || hoveredFilter === filterType
+                  const selectedCount = selectedValues.length
 
-            <FilterSelect
-              label="Impeachment Vote"
-              value={filters.impeachment}
-              placeholder="All Votes"
-              onChange={(value) => handleFilterChange('impeachment', value)}
-              options={['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))}
-            />
+                  return (
+                    <div 
+                      key={filterType} 
+                      className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
+                      onMouseEnter={() => setHoveredFilter(filterType)}
+                      onMouseLeave={() => {
+                        setHoveredFilter(null)
+                        // Always allow collapsing on mouse leave
+                        setExpandedFilters(prev => ({ ...prev, [filterType]: false }))
+                      }}
+                    >
+                      <div 
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        onClick={() => {
+                          // Prevent dropdown from toggling on click - only allow hover expansion
+                          // setExpandedFilters(prev => ({ 
+                          //   ...prev, 
+                          //   [filterType]: !prev[filterType] 
+                          // }))
+                        }}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <label className="text-sm font-semibold text-gray-700 cursor-pointer">
+                            {filterConfig?.label || filterType}
+                          </label>
+                          {selectedCount > 0 && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              {selectedCount}
+                            </span>
+                          )}
+                        </div>
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="max-h-64 overflow-y-auto border-t border-gray-100">
+                          {options.map((option) => {
+                            const isSelected = selectedValues.includes(option.value)
+                            return (
+                              <label
+                                key={option.value}
+                                className="flex items-center space-x-2 cursor-pointer hover:bg-blue-50 px-3 py-2"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleFilterValueToggle(filterType, option.value)
+                                  if (!isSelected) {
+                                    setExpandedFilters(prev => ({ ...prev, [filterType]: true }))
+                                  }
+                                }}
+                              >
+                                <div className="relative flex items-center justify-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  {isSelected && (
+                                    <svg className="absolute w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <span className="text-sm text-gray-700 flex-1">{option.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                      
+                      {/* Show selected items as chips below the dropdown */}
+                      {selectedValues.length > 0 && (
+                        <div className="px-3 pt-2 border-t border-gray-100">
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedValues.map((value) => {
+                              const option = options.find(opt => opt.value === value)
+                              return (
+                                <span
+                                  key={value}
+                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
+                                >
+                                  <span>{option?.label || value}</span>
+                                  <button
+                                    type="button"
+                                    className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleFilterValueToggle(filterType, value)
+                                    }}
+                                    title="Remove"
+                                  >
+                                    <FaTimes className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
-            <FilterSelect
-              label="2024 Election Candidate"
-              value={filters.electionCandidate}
-              placeholder="All Candidates"
-              onChange={(value) => handleFilterChange('electionCandidate', value)}
-              options={candidates.map((candidate) => ({ value: candidate, label: candidate }))}
-            />
+            {availableFilterTypes.length > 0 && (
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Filter by</label>
+                <select
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  value={newFilterType}
+                  onChange={(e) => {
+                    const selectedType = e.target.value
+                    if (selectedType) {
+                      handleFilterTypeSelect(selectedType)
+                    }
+                  }}
+                >
+                  <option value="">Select filter type...</option>
+                  {availableFilterTypes.map((type) => (
+                    <option key={type.key} value={type.key}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="flex space-x-2">
               <button
@@ -707,6 +1171,7 @@ function App() {
               >
                 Apply
               </button>
+              {activeFilterTypes.length > 0 && (
               <button
                 type="button"
                 className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md"
@@ -714,16 +1179,17 @@ function App() {
               >
                 Reset
               </button>
+              )}
             </div>
           </div>
 
           <SummaryBlock summary={summary} parties={parties} />
         </div>
 
-        <div className="flex-1 flex flex-col">
-          <section className="flex-1 ml-2 mr-4 mb-4 bg-white rounded-lg shadow-md">
-            <div className="map-pane">
-              <div className="map-pane__actions">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <section className="flex-1 m-4 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="map-pane h-full flex flex-col">
+              <div className="map-pane__actions flex-shrink-0">
                 <button
                   type="button"
                   className="bg-white/95 text-sm font-medium text-gray-800 px-3 py-2 rounded shadow hover:bg-white"
@@ -745,7 +1211,18 @@ function App() {
                 )}
               </div>
 
-              <div className="map-frame">
+              <div className="map-frame relative overflow-hidden">
+                <div className="relative h-full w-full">
+                  <div ref={mapContainerRef} className="map-canvas" />
+                  {hoveredFeature && popupPosition.x > 0 && popupPosition.y > 0 && (
+                    <PopupContent
+                      feature={hoveredFeature}
+                      colorMode={colorMode}
+                      position={popupPosition}
+                      formatNumber={formatNumber}
+                    />
+                  )}
+                </div>
                 <MapLegend
                   mode={colorMode}
                   parties={parties}
@@ -753,7 +1230,6 @@ function App() {
                   getElectionColor={getElectionColor}
                   registeredVoterClassification={registeredVoterClassification}
                 />
-                <div ref={mapContainerRef} className="map-canvas" />
               </div>
             </div>
             {(loading || error) && (
@@ -772,22 +1248,24 @@ function App() {
         </div>
 
         <aside
-          className={`${selectedFeature ? 'block' : 'hidden'} w-80 bg-white shadow-md p-3 overflow-y-auto`}
+          className={`${selectedFeature ? 'block' : 'hidden'} w-80 bg-gradient-to-b from-white to-gray-50 shadow-lg border-l border-gray-200 overflow-y-auto`}
         >
-          <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
-            <h2 className="text-base font-semibold">Constituency Detail</h2>
+          <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 z-10">
+            <div className="flex justify-between items-center">
+              <h2 className="text-sm font-bold text-gray-900">Constituency Detail</h2>
             <button
               type="button"
-              className="text-gray-500 hover:text-gray-700"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               onClick={() => setSelectedFeature(null)}
             >
-              <FaTimes />
+                <FaTimes className="text-sm" />
             </button>
+            </div>
           </div>
 
           {selectedFeature ? (
-            <div className="space-y-2 text-sm">
-              <div ref={detailMapContainerRef} className="mb-3 h-40 bg-gray-100 rounded-lg" />
+            <div className="px-4 py-3 space-y-2.5 text-xs font-sans">
+              <div ref={detailMapContainerRef} className="mb-3 h-32 bg-gray-100 rounded-lg" />
 
               <DetailRow
                 label="Constituency"
@@ -798,39 +1276,51 @@ function App() {
                   <DetailRow label="Original Name" value={selectedFeature.properties?.name} />
                 )}
               <DetailRow label="County" value={selectedFeature.properties?.county} />
-              <DetailRow label="Member of Parliament" value={selectedFeature.properties?.mp} />
-              <DetailRow
-                label="Registered Voters"
-                value={formatNumber(selectedFeature.properties?.registered_voters)}
-              />
+              <DetailRow label="Registered Voters" value={formatNumber(selectedFeature.properties?.registered_voters)} />
 
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500">Party</p>
-                <p className="font-medium flex items-center space-x-2 text-sm">
+              <div className="space-y-2 pt-2 border-t border-gray-200">
+              <DetailRow label="Member of Parliament" value={selectedFeature.properties?.mp} />
+                
+                <div className="space-y-2">
+                  <DetailRow
+                    label="Party"
+                    value={
                   <span className={`inline-block px-2 py-0.5 rounded text-xs text-white ${detailPartyClass}`}>
                     {selectedFeature.properties?.party_label}
                   </span>
-                  <span>{selectedFeature.properties?.party_label}</span>
-                </p>
-              </div>
+                    }
+                  />
 
-              <div className="grid grid-cols-2 gap-4">
-                <VoteBadge
+                  <div className="space-y-1.5 bg-gray-50 p-2 rounded-lg">
+                    <DetailRow
                   label="Impeachment Vote"
-                  value={selectedFeature.properties?.impeachment_label}
-                />
-                <VoteBadge label="Budget Vote" value={selectedFeature.properties?.budget_label} />
+                      value={
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(selectedFeature.properties?.impeachment_label)}`}>
+                          {selectedFeature.properties?.impeachment_label || 'N/A'}
+                        </span>
+                      }
+                    />
+                    <DetailRow
+                      label="Budget Vote"
+                      value={
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(selectedFeature.properties?.budget_label)}`}>
+                          {selectedFeature.properties?.budget_label || 'N/A'}
+                        </span>
+                      }
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500">2024 Election Results</p>
+              <div className="space-y-1.5 pt-2 border-t border-gray-200">
+                <p className="text-xs font-bold text-gray-900 mb-1.5">2024 Election Results</p>
                 <div className="space-y-1.5">
                   {detailedElectionEntries.length ? (
                     detailedElectionEntries.map(([candidate, percentage]) => (
                       <div key={candidate} className="text-xs">
-                        <div className="flex justify-between">
-                          <span>{candidate}</span>
-                          <span className="font-medium">{percentage}%</span>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-medium">{candidate}</span>
+                          <span className="font-semibold">{percentage}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5">
                           <div
@@ -844,13 +1334,13 @@ function App() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No election data available</p>
+                    <p className="text-xs text-gray-500">No election data available</p>
                   )}
                 </div>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-500">Select a constituency on the map to see details.</p>
+            <p className="text-xs text-gray-500 px-4 py-3">Select a constituency on the map to see details.</p>
           )}
         </aside>
       </main>
@@ -1075,11 +1565,87 @@ const SummaryCard = ({ title, value, className }) => (
 )
 
 const DetailRow = ({ label, value }) => (
-  <div>
-    <p className="text-sm text-gray-500">{label}</p>
-    <p className="font-semibold">{value || 'N/A'}</p>
+  <div className="flex items-center justify-between gap-2">
+    <span className="text-xs font-bold text-gray-800 flex-shrink-0">{label}:</span>
+    <span className="text-xs text-gray-900 text-right flex-shrink-0 leading-tight">{value || 'N/A'}</span>
   </div>
 )
+
+const PopupContent = ({ feature, colorMode, position, formatNumber }) => {
+  const props = feature.properties || {}
+  const name = props.display_name || props.name || 'Unknown'
+
+  let content = null
+
+  if (colorMode === 'party') {
+    content = (
+      <>
+        <div className="font-bold text-gray-900">{name}</div>
+        <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
+        <div className="font-bold text-gray-900">Party: {props.party_label || 'N/A'}</div>
+      </>
+    )
+  } else if (colorMode === 'impeachment') {
+    content = (
+      <>
+        <div className="font-bold text-gray-900">{name}</div>
+        <div className="font-bold text-gray-900">Impeachment Vote: {props.impeachment_label || 'N/A'}</div>
+        <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
+      </>
+    )
+  } else if (colorMode === 'registered_voters') {
+    content = (
+      <>
+        <div className="font-bold text-gray-900">{name}</div>
+        <div className="font-bold text-gray-900">Registered Voters: {formatNumber(props.registered_voters)}</div>
+      </>
+    )
+  } else if (colorMode === 'budget') {
+    content = (
+      <>
+        <div className="font-bold text-gray-900">{name}</div>
+        <div className="font-bold text-gray-900">Budget Vote: {props.budget_label || 'N/A'}</div>
+        <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
+      </>
+    )
+  } else if (colorMode === 'election') {
+    const winner = determineWinner(props.election_results)
+    content = (
+      <>
+        <div className="font-bold text-gray-900">{name}</div>
+        <div className="font-bold text-gray-900">Winner: {winner || 'N/A'}</div>
+        <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
+      </>
+    )
+  } else {
+    // Default fallback
+    content = (
+      <>
+        <div className="font-bold text-gray-900">{name}</div>
+        <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
+      </>
+    )
+  }
+
+  return (
+    <div
+      className="absolute z-[1000] border-2 border-gray-400 rounded shadow-lg p-2 pointer-events-none"
+      style={{
+        left: `${position.x + 15}px`,
+        top: `${position.y - 10}px`,
+        transform: 'translateY(-100%)',
+        maxWidth: '180px',
+        minWidth: '140px',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div className="text-xs space-y-0.5">
+        {content}
+      </div>
+    </div>
+  )
+}
 
 const VoteBadge = ({ label, value }) => {
   const normalized = normalizeKey(value)
