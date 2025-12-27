@@ -19,7 +19,6 @@ class ConstituencySerializer(serializers.ModelSerializer):
             'budget_vote',
             'county',
             'registered_voters',
-            'election_results',
             'geometry',
         )
 

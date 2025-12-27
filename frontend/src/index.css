@@ -239,17 +239,92 @@ body {
   background-color: #2563eb;
 }
 
+.party-jp {
+  background-color: #E60000;
+}
+
+.party-wiper {
+  background-color: #0033A0;
+}
+
+.party-udm {
+  background-color: #B89300;
+  color: #854d0e;
+}
+
+.party-anc {
+  background-color: #008000;
+}
+
+.party-ford-kenya {
+  background-color: #009739;
+}
+
+.party-kanu {
+  background-color: #000000;
+}
+
+.party-kup {
+  background-color: #800080;
+}
+
+.party-paa {
+  background-color: #228B22;
+}
+
+.party-ccm {
+  background-color: #008000;
+}
+
+.party-upia {
+  background-color: #1E90FF;
+}
+
+.party-nap-k {
+  background-color: #0057B7;
+}
+
+.party-mccp {
+  background-color: #FF6600;
+}
+
+.party-gddp {
+  background-color: #008080;
+}
+
+.party-tsp {
+  background-color: #FFC107;
+  color: #854d0e;
+}
+
+.party-nopeu {
+  background-color: #FF0000;
+}
+
+.party-mdg {
+  background-color: #00AEEF;
+}
+
+.party-upa {
+  background-color: #F59E0B;
+  color: #854d0e;
+}
+
+.party-dap-k {
+  background-color: #000000;
+}
+
 .party-independent,
 .party-others {
-  background-color: #6b7280;
+  background-color: #808080;
 }
 
 .vote-yes {
-  background-color: #38a169;
+  background-color: #e53e3e;
 }
 
 .vote-no {
-  background-color: #e53e3e;
+  background-color: #38a169;
 }
 
 .vote-abstain {

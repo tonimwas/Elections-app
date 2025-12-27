@@ -91,15 +91,31 @@ const COLOR_MODES = [
   { key: 'party', label: 'Party' },
   { key: 'impeachment', label: 'Impeachment Vote' },
   { key: 'budget', label: '2024 Budget Vote' },
-  { key: 'election', label: '2024 Election' },
   { key: 'registered_voters', label: 'Registered Voters' },
 ]
 const PARTY_COLORS = {
-  jubilee: '#dc2626',
-  uda: '#facc15',
-  odm: '#2563eb',
-  independent: '#6b7280',
-  others: '#6b7280',
+  uda: '#FFDD00',
+  odm: '#FF7F00',
+  jp: '#E60000',
+  wiper: '#0033A0',
+  udm: '#B89300',
+  anc: '#008000',
+  'ford-kenya': '#009739',
+  kanu: '#000000',
+  kup: '#800080',
+  paa: '#228B22',
+  ccm: '#008000',
+  upia: '#1E90FF',
+  'nap-k': '#0057B7',
+  mccp: '#FF6600',
+  gddp: '#008080',
+  tsp: '#FFC107',
+  nopeu: '#FF0000',
+  mdg: '#00AEEF',
+  upa: '#F59E0B',
+  'dap-k': '#000000',
+  independent: '#808080',
+  others: '#808080',
 }
 const REGISTERED_VOTER_COLORS = [
   '#f7fbff',
@@ -115,8 +131,8 @@ const REGISTERED_VOTER_COLORS = [
 ]
 const JENKS_CLASS_COUNT = 10
 const VOTE_COLORS = {
-  yes: '#38a169',
-  no: '#e53e3e',
+  yes: '#e53e3e',
+  no: '#38a169',
   abstain: '#ecc94b',
 }
 const BUDGET_COLORS = {
@@ -124,38 +140,70 @@ const BUDGET_COLORS = {
   no: '#b91c1c',
   abstain: '#d97706',
 }
-const ELECTION_COLOR_PALETTE = ['#805ad5', '#dd6b20', '#3182ce', '#f56565', '#38b2ac', '#2b6cb0', '#d53f8c']
-const PARTY_BADGE_KEYS = new Set(['jubilee', 'uda', 'odm', 'independent', 'others'])
+const PARTY_BADGE_KEYS = new Set(Object.keys(PARTY_COLORS))
 const MAP_PADDING = [20, 20]
 
 const normalizeKey = (value = '') => value.toString().toLowerCase().trim()
+const normalizePartyKey = (value = '') => {
+  const raw = normalizeKey(value)
+  if (!raw) {
+    return 'others'
+  }
+  const cleaned = raw
+    .replace(/–/g, '-')
+    .replace(/—/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const aliases = {
+    jubilee: 'jp',
+    'jubilee party': 'jp',
+    jp: 'jp',
+    'united democratic alliance': 'uda',
+    uda: 'uda',
+    'orange democratic movement': 'odm',
+    odm: 'odm',
+    'wiper democratic movement': 'wiper',
+    wiper: 'wiper',
+    'ford-kenya': 'ford-kenya',
+    'ford kenya': 'ford-kenya',
+    'ford–kenya': 'ford-kenya',
+    'ford– kenya': 'ford-kenya',
+  }
+
+  const normalized = aliases[cleaned] || cleaned.replace(/\s+/g, '-')
+  return PARTY_COLORS[normalized] ? normalized : 'others'
+}
+
+const PARTY_FULL_NAMES = {
+  uda: 'United Democratic Alliance (UDA)',
+  odm: 'Orange Democratic Movement (ODM)',
+  jp: 'Jubilee Party (JP)',
+  wiper: 'Wiper Democratic Movement',
+  udm: 'United Democratic Movement (UDM)',
+  anc: 'Amani National Congress (ANC)',
+  'ford-kenya': 'FORD–Kenya',
+  kanu: 'KANU',
+  kup: 'Kenya Union Party (KUP)',
+  paa: 'Pamoja African Alliance (PAA)',
+  ccm: 'Chama Cha Mashinani (CCM)',
+  upia: 'United Party of Independent Alliance (UPIA)',
+  'nap-k': 'National Agenda Party of Kenya (NAP-K)',
+  mccp: 'Maendeleo Chap Chap (MCCP)',
+  gddp: 'Grand Dream Development Party (GDDP)',
+  tsp: 'The Service Party (TSP)',
+  nopeu: 'NOPEU',
+  mdg: 'Movement for Democracy and Growth (MDG)',
+  upa: 'United Progressive Alliance (UPA)',
+  'dap-k': 'Democratic Action Party–Kenya (DAP-K)',
+  independent: 'Independent',
+  others: 'Others',
+}
 const VOTE_OPTIONS = [
   { key: 'yes', label: 'YES' },
   { key: 'no', label: 'NO' },
   { key: 'abstain', label: 'ABSTAIN' },
 ]
-
-const normalizeElectionResults = (results) => {
-  if (!results || typeof results !== 'object') {
-    return {}
-  }
-  return Object.entries(results).reduce((acc, [candidate, value]) => {
-    const numeric = typeof value === 'number' ? value : parseFloat(value)
-    acc[candidate] = Number.isFinite(numeric) ? numeric : 0
-    return acc
-  }, {})
-}
-
-const determineWinner = (results) => {
-  const entries = Object.entries(results || {})
-  if (!entries.length) {
-    return null
-  }
-  return entries.reduce(
-    (top, current) => (current[1] > top[1] ? current : top),
-    entries[0],
-  )[0]
-}
 
 const getPartyColor = (partyKey) => PARTY_COLORS[partyKey] || PARTY_COLORS.others
 const getVoteColor = (voteKey) => VOTE_COLORS[voteKey] || '#a0aec0'
@@ -203,36 +251,16 @@ const formatThousandRounded = (value) => {
   return formatNumber(rounded)
 }
 
-function useElectionColors() {
-  const cacheRef = useRef({})
-  const paletteIndexRef = useRef(0)
-
-  return (candidate) => {
-    const key = normalizeKey(candidate)
-    if (!key) {
-      return '#a0aec0'
-    }
-    if (!cacheRef.current[key]) {
-      cacheRef.current[key] =
-        ELECTION_COLOR_PALETTE[paletteIndexRef.current % ELECTION_COLOR_PALETTE.length]
-      paletteIndexRef.current += 1
-    }
-    return cacheRef.current[key]
-  }
-}
-
 const FILTER_TYPES = [
   { key: 'county', label: 'County' },
   { key: 'party', label: 'Party' },
   { key: 'impeachment', label: 'Impeachment Vote' },
-  { key: 'electionCandidate', label: '2024 Election Candidate' },
 ]
 
 const defaultFilters = {
   county: [],
   party: [],
   impeachment: [],
-  electionCandidate: [],
 }
 
 function App() {
@@ -249,7 +277,6 @@ function App() {
   const [hoveredFeature, setHoveredFeature] = useState(null)
   const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 })
   const [expandedFilters, setExpandedFilters] = useState({})
-  const [hoveredFilter, setHoveredFilter] = useState(null)
 
   const mapContainerRef = useRef(null)
   const mapRef = useRef(null)
@@ -258,7 +285,6 @@ function App() {
   const detailMapRef = useRef(null)
   const detailLayerRef = useRef(null)
   const selectedLayerRef = useRef(null)
-  const getElectionColor = useElectionColors()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -273,7 +299,7 @@ function App() {
         const normalized = (result.features || []).map((feature) => {
           const properties = feature.properties || {}
           const partyLabel = properties.party || 'Others'
-          const partyKey = normalizeKey(partyLabel) || 'others'
+          const partyKey = normalizePartyKey(partyLabel)
           const impeachmentLabel = properties.impeachment_vote || 'Unknown'
           const impeachmentKey = normalizeKey(impeachmentLabel)
           const budgetLabel = properties.budget_vote || 'Unknown'
@@ -286,12 +312,11 @@ function App() {
               ...properties,
               display_name: displayName,
               party_label: partyLabel,
-              party_key: PARTY_BADGE_KEYS.has(partyKey) ? partyKey : 'others',
+              party_key: partyKey,
               impeachment_label: impeachmentLabel,
               impeachment_key: impeachmentKey,
               budget_label: budgetLabel,
               budget_key: budgetKey,
-              election_results: normalizeElectionResults(properties.election_results),
             },
           }
         })
@@ -333,7 +358,6 @@ function App() {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(mapRef.current)
-
 
     // Handle window resize to recenter map
     const handleResize = () => {
@@ -434,7 +458,7 @@ function App() {
           dashArray: '10, 5',
         },
       }).addTo(mapRef.current)
-      
+
       // Bring to front to ensure it's visible on top with higher z-index
       if (selectedLayerRef.current) {
         selectedLayerRef.current.bringToFront()
@@ -480,38 +504,28 @@ function App() {
   const filteredFeatures = useMemo(() => {
     return features.filter((feature) => {
       const props = feature.properties || {}
-      
+
       if (filters.county.length > 0) {
         const countyMatch = filters.county.some(
           (county) => normalizeKey(props.county) === normalizeKey(county)
         )
         if (!countyMatch) return false
       }
-      
+
       if (filters.party.length > 0) {
         const partyMatch = filters.party.some(
-          (party) => props.party_key === normalizeKey(party)
+          (party) => props.party_key === normalizePartyKey(party)
         )
         if (!partyMatch) return false
       }
-      
+
       if (filters.impeachment.length > 0) {
         const impeachmentMatch = filters.impeachment.some(
           (impeachment) => normalizeKey(props.impeachment_label) === normalizeKey(impeachment)
         )
         if (!impeachmentMatch) return false
       }
-      
-      if (filters.electionCandidate.length > 0) {
-        const candidateMatch = filters.electionCandidate.some((candidate) => {
-          const target = normalizeKey(candidate)
-          return Object.keys(props.election_results || {}).some(
-            (resultCandidate) => normalizeKey(resultCandidate) === target
-          )
-        })
-        if (!candidateMatch) return false
-      }
-      
+
       return true
     })
   }, [features, filters])
@@ -522,7 +536,6 @@ function App() {
       parties: {},
       impeachment: { yes: 0, no: 0, abstain: 0 },
       budget: { yes: 0, no: 0, abstain: 0 },
-      electionWins: {},
       registeredVoters: 0,
     }
 
@@ -541,25 +554,14 @@ function App() {
         totals.budget[budgetKey] += 1
       }
 
-      const winner = determineWinner(props.election_results)
-      if (winner) {
-        const key = normalizeKey(winner)
-        totals.electionWins[key] = (totals.electionWins[key] || 0) + 1
-      }
-
       const voters = Number(props.registered_voters)
       if (Number.isFinite(voters)) {
         totals.registeredVoters += voters
       }
     })
 
-    const electionLeader = Object.entries(totals.electionWins).sort((a, b) => b[1] - a[1])[0]
     return {
       ...totals,
-      leadingCandidate: electionLeader ? electionLeader[0] : null,
-      leadingShare: electionLeader && totals.total
-        ? Math.round((electionLeader[1] / totals.total) * 100)
-        : 0,
     }
   }, [filteredFeatures])
 
@@ -583,45 +585,34 @@ function App() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [features])
 
-  const candidates = useMemo(() => {
-    const names = new Set()
-    features.forEach((feature) => {
-      Object.keys(feature.properties?.election_results || {}).forEach((candidate) => {
-        names.add(candidate)
-      })
-    })
-    return Array.from(names).sort()
-  }, [features])
-
   useEffect(() => {
     if (!mapRef.current) {
       return
     }
-    
+
     // Use requestAnimationFrame for smooth layer updates
     const updateLayer = () => {
       if (!mapRef.current) return
-      
-    if (geoJsonLayerRef.current) {
-      geoJsonLayerRef.current.remove()
-        geoJsonLayerRef.current = null
-    }
-      
-    if (!filteredFeatures.length) {
-      return
-    }
 
-    const layer = L.geoJSON(filteredFeatures, {
-      style: (feature) =>
-        getStyleForFeature(
-          feature.properties,
-          colorMode,
-          getElectionColor,
-          registeredVoterClassification,
-        ),
-      onEachFeature: (feature, layerInstance) => {
+      if (geoJsonLayerRef.current) {
+        geoJsonLayerRef.current.remove()
+        geoJsonLayerRef.current = null
+      }
+
+      if (!filteredFeatures.length) {
+        return
+      }
+
+      const layer = L.geoJSON(filteredFeatures, {
+        style: (feature) =>
+          getStyleForFeature(
+            feature.properties,
+            colorMode,
+            registeredVoterClassification,
+          ),
+        onEachFeature: (feature, layerInstance) => {
           let hoverTimeout = null
-          
+
           layerInstance.on('mouseover', (e) => {
             if (hoverTimeout) clearTimeout(hoverTimeout)
             setHoveredFeature(feature)
@@ -633,14 +624,14 @@ function App() {
               })
             }
           })
-          
-        layerInstance.on('mouseout', () => {
+
+          layerInstance.on('mouseout', () => {
             // Small delay to prevent flickering
             hoverTimeout = setTimeout(() => {
               setHoveredFeature(null)
             }, 100)
           })
-          
+
           layerInstance.on('mousemove', (e) => {
             if (mapRef.current && mapContainerRef.current) {
               requestAnimationFrame(() => {
@@ -652,17 +643,17 @@ function App() {
               })
             }
           })
-          
-        layerInstance.on('click', () => {
+
+          layerInstance.on('click', () => {
             // Use requestAnimationFrame for smooth selection
             requestAnimationFrame(() => {
-          setSelectedFeature(feature)
+              setSelectedFeature(feature)
             })
-        })
-      },
-    })
+          })
+        },
+      })
 
-    geoJsonLayerRef.current = layer.addTo(mapRef.current)
+      geoJsonLayerRef.current = layer.addTo(mapRef.current)
     }
 
     requestAnimationFrame(updateLayer)
@@ -688,7 +679,7 @@ function App() {
         mapRef.current.off('click')
       }
     }
-  }, [filteredFeatures, colorMode, getElectionColor, registeredVoterClassification])
+  }, [filteredFeatures, colorMode, registeredVoterClassification])
 
   const handleFilterValueToggle = (filterType, value) => {
     setFilters((prev) => {
@@ -754,14 +745,6 @@ function App() {
     }
   }
 
-  const detailedElectionEntries = useMemo(() => {
-    if (!selectedFeature) {
-      return []
-    }
-    return Object.entries(selectedFeature.properties?.election_results || {})
-      .sort((a, b) => b[1] - a[1])
-  }, [selectedFeature])
-
   const detailPartyClass = selectedFeature
     ? PARTY_BADGE_KEYS.has(selectedFeature.properties?.party_key)
       ? `party-${selectedFeature.properties.party_key}`
@@ -773,7 +756,7 @@ function App() {
       <header className="bg-white shadow-md">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <h1 className="text-xl font-semibold text-gray-800">
-            Kenya Constituency Election Visualization
+            Kenya Constituency Visualization
           </h1>
           <div className="flex items-center space-x-3">
             <button
@@ -803,7 +786,7 @@ function App() {
                   const filterConfig = FILTER_TYPES.find((f) => f.key === filterType)
                   let options = []
                   let placeholder = ''
-                  
+
                   if (filterType === 'county') {
                     options = counties.map((county) => ({ value: county, label: county }))
                     placeholder = 'All Counties'
@@ -813,34 +796,27 @@ function App() {
                   } else if (filterType === 'impeachment') {
                     options = ['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))
                     placeholder = 'All Votes'
-                  } else if (filterType === 'electionCandidate') {
-                    options = candidates.map((candidate) => ({ value: candidate, label: candidate }))
-                    placeholder = 'All Candidates'
                   }
 
                   const selectedValues = filters[filterType] || []
-                  const isExpanded = expandedFilters[filterType] || hoveredFilter === filterType
+                  const isExpanded = !!expandedFilters[filterType]
                   const selectedCount = selectedValues.length
 
                   return (
-                    <div 
-                      key={filterType} 
+                    <div
+                      key={filterType}
                       className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
-                      onMouseEnter={() => setHoveredFilter(filterType)}
                       onMouseLeave={() => {
-                        setHoveredFilter(null)
-                        // Always allow collapsing on mouse leave
-                        setExpandedFilters(prev => ({ ...prev, [filterType]: false }))
+                        setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
                       }}
                     >
-                      <div 
+                      <div
                         className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
                         onClick={() => {
-                          // Prevent dropdown from toggling on click - only allow hover expansion
-                          // setExpandedFilters(prev => ({ 
-                          //   ...prev, 
-                          //   [filterType]: !prev[filterType] 
-                          // }))
+                          setExpandedFilters((prev) => ({
+                            ...prev,
+                            [filterType]: !prev[filterType],
+                          }))
                         }}
                       >
                         <div className="flex items-center space-x-2">
@@ -853,16 +829,61 @@ function App() {
                             </span>
                           )}
                         </div>
-                        <svg
-                          className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                        <button
+                          type="button"
+                          aria-label={isExpanded ? 'Collapse filter' : 'Expand filter'}
+                          aria-expanded={isExpanded}
+                          className="p-2 -m-2 rounded hover:bg-gray-100"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setExpandedFilters((prev) => ({
+                              ...prev,
+                              [filterType]: !prev[filterType],
+                            }))
+                          }}
                         >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                          <svg
+                            className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
                       </div>
-                      
+
+                      {/* Selected items (chips) shown above dropdown options so remove buttons stay accessible */}
+                      {selectedValues.length > 0 && (
+                        <div className="px-3 pb-2 border-t border-gray-100">
+                          <div className="flex flex-wrap gap-1.5 pt-2">
+                            {selectedValues.map((value) => {
+                              const option = options.find((opt) => opt.value === value)
+                              return (
+                                <span
+                                  key={value}
+                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
+                                >
+                                  <span>{option?.label || value}</span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${(option?.label || value).toString()}`}
+                                    className="hover:bg-blue-200 rounded-full p-1 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleFilterValueToggle(filterType, value)
+                                    }}
+                                    title="Remove"
+                                  >
+                                    <FaTimes className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {isExpanded && (
                         <div className="max-h-64 overflow-y-auto border-t border-gray-100">
                           {options.map((option) => {
@@ -874,9 +895,7 @@ function App() {
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleFilterValueToggle(filterType, option.value)
-                                  if (!isSelected) {
-                                    setExpandedFilters(prev => ({ ...prev, [filterType]: true }))
-                                  }
+                                  setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
                                 }}
                               >
                                 <div className="relative flex items-center justify-center">
@@ -887,8 +906,16 @@ function App() {
                                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                   />
                                   {isSelected && (
-                                    <svg className="absolute w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    <svg
+                                      className="absolute w-3 h-3 text-white pointer-events-none"
+                                      fill="currentColor"
+                                      viewBox="0 0 20 20"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clipRule="evenodd"
+                                      />
                                     </svg>
                                   )}
                                 </div>
@@ -896,36 +923,6 @@ function App() {
                               </label>
                             )
                           })}
-                        </div>
-                      )}
-                      
-                      {/* Show selected items as chips below the dropdown */}
-                      {selectedValues.length > 0 && (
-                        <div className="px-3 pt-2 border-t border-gray-100">
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedValues.map((value) => {
-                              const option = options.find(opt => opt.value === value)
-                              return (
-                                <span
-                                  key={value}
-                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
-                                >
-                                  <span>{option?.label || value}</span>
-                                  <button
-                                    type="button"
-                                    className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleFilterValueToggle(filterType, value)
-                                    }}
-                                    title="Remove"
-                                  >
-                                    <FaTimes className="w-2.5 h-2.5" />
-                                  </button>
-                                </span>
-                              )
-                            })}
-                          </div>
                         </div>
                       )}
                     </div>
@@ -958,13 +955,13 @@ function App() {
             )}
 
             {activeFilterTypes.length > 0 && (
-            <button
-              type="button"
+              <button
+                type="button"
                 className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition text-sm"
-              onClick={handleResetFilters}
-            >
-              Reset All Filters
-            </button>
+                onClick={handleResetFilters}
+              >
+                Reset All Filters
+              </button>
             )}
           </div>
 
@@ -1009,7 +1006,7 @@ function App() {
                   const filterConfig = FILTER_TYPES.find((f) => f.key === filterType)
                   let options = []
                   let placeholder = ''
-                  
+
                   if (filterType === 'county') {
                     options = counties.map((county) => ({ value: county, label: county }))
                     placeholder = 'All Counties'
@@ -1019,34 +1016,27 @@ function App() {
                   } else if (filterType === 'impeachment') {
                     options = ['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))
                     placeholder = 'All Votes'
-                  } else if (filterType === 'electionCandidate') {
-                    options = candidates.map((candidate) => ({ value: candidate, label: candidate }))
-                    placeholder = 'All Candidates'
                   }
 
                   const selectedValues = filters[filterType] || []
-                  const isExpanded = expandedFilters[filterType] || hoveredFilter === filterType
+                  const isExpanded = !!expandedFilters[filterType]
                   const selectedCount = selectedValues.length
 
                   return (
-                    <div 
-                      key={filterType} 
+                    <div
+                      key={filterType}
                       className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
-                      onMouseEnter={() => setHoveredFilter(filterType)}
                       onMouseLeave={() => {
-                        setHoveredFilter(null)
-                        // Always allow collapsing on mouse leave
-                        setExpandedFilters(prev => ({ ...prev, [filterType]: false }))
+                        setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
                       }}
                     >
-                      <div 
+                      <div
                         className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
                         onClick={() => {
-                          // Prevent dropdown from toggling on click - only allow hover expansion
-                          // setExpandedFilters(prev => ({ 
-                          //   ...prev, 
-                          //   [filterType]: !prev[filterType] 
-                          // }))
+                          setExpandedFilters((prev) => ({
+                            ...prev,
+                            [filterType]: !prev[filterType],
+                          }))
                         }}
                       >
                         <div className="flex items-center space-x-2">
@@ -1059,16 +1049,61 @@ function App() {
                             </span>
                           )}
                         </div>
-                        <svg
-                          className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                        <button
+                          type="button"
+                          aria-label={isExpanded ? 'Collapse filter' : 'Expand filter'}
+                          aria-expanded={isExpanded}
+                          className="p-2 -m-2 rounded hover:bg-gray-100"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setExpandedFilters((prev) => ({
+                              ...prev,
+                              [filterType]: !prev[filterType],
+                            }))
+                          }}
                         >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                          <svg
+                            className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
                       </div>
-                      
+
+                      {/* Selected items (chips) shown above dropdown options so remove buttons stay accessible */}
+                      {selectedValues.length > 0 && (
+                        <div className="px-3 pb-2 border-t border-gray-100">
+                          <div className="flex flex-wrap gap-1.5 pt-2">
+                            {selectedValues.map((value) => {
+                              const option = options.find((opt) => opt.value === value)
+                              return (
+                                <span
+                                  key={value}
+                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
+                                >
+                                  <span>{option?.label || value}</span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${(option?.label || value).toString()}`}
+                                    className="hover:bg-blue-200 rounded-full p-1 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleFilterValueToggle(filterType, value)
+                                    }}
+                                    title="Remove"
+                                  >
+                                    <FaTimes className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {isExpanded && (
                         <div className="max-h-64 overflow-y-auto border-t border-gray-100">
                           {options.map((option) => {
@@ -1080,9 +1115,7 @@ function App() {
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleFilterValueToggle(filterType, option.value)
-                                  if (!isSelected) {
-                                    setExpandedFilters(prev => ({ ...prev, [filterType]: true }))
-                                  }
+                                  setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
                                 }}
                               >
                                 <div className="relative flex items-center justify-center">
@@ -1093,8 +1126,16 @@ function App() {
                                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                   />
                                   {isSelected && (
-                                    <svg className="absolute w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    <svg
+                                      className="absolute w-3 h-3 text-white pointer-events-none"
+                                      fill="currentColor"
+                                      viewBox="0 0 20 20"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clipRule="evenodd"
+                                      />
                                     </svg>
                                   )}
                                 </div>
@@ -1102,36 +1143,6 @@ function App() {
                               </label>
                             )
                           })}
-                        </div>
-                      )}
-                      
-                      {/* Show selected items as chips below the dropdown */}
-                      {selectedValues.length > 0 && (
-                        <div className="px-3 pt-2 border-t border-gray-100">
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedValues.map((value) => {
-                              const option = options.find(opt => opt.value === value)
-                              return (
-                                <span
-                                  key={value}
-                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
-                                >
-                                  <span>{option?.label || value}</span>
-                                  <button
-                                    type="button"
-                                    className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleFilterValueToggle(filterType, value)
-                                    }}
-                                    title="Remove"
-                                  >
-                                    <FaTimes className="w-2.5 h-2.5" />
-                                  </button>
-                                </span>
-                              )
-                            })}
-                          </div>
                         </div>
                       )}
                     </div>
@@ -1172,13 +1183,13 @@ function App() {
                 Apply
               </button>
               {activeFilterTypes.length > 0 && (
-              <button
-                type="button"
-                className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md"
-                onClick={handleResetFilters}
-              >
-                Reset
-              </button>
+                <button
+                  type="button"
+                  className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md"
+                  onClick={handleResetFilters}
+                >
+                  Reset
+                </button>
               )}
             </div>
           </div>
@@ -1227,23 +1238,22 @@ function App() {
                   mode={colorMode}
                   parties={parties}
                   features={features}
-                  getElectionColor={getElectionColor}
                   registeredVoterClassification={registeredVoterClassification}
                 />
               </div>
+              {(loading || error) && (
+                <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center rounded-lg">
+                  {loading ? (
+                    <div className="flex items-center space-x-3">
+                      <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12" />
+                      <p className="text-gray-700">Loading map data...</p>
+                    </div>
+                  ) : (
+                    <p className="text-red-600 font-medium">{error}</p>
+                  )}
+                </div>
+              )}
             </div>
-            {(loading || error) && (
-              <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center rounded-lg">
-                {loading ? (
-                  <div className="flex items-center space-x-3">
-                    <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12" />
-                    <p className="text-gray-700">Loading map data...</p>
-                  </div>
-                ) : (
-                  <p className="text-red-600 font-medium">{error}</p>
-                )}
-              </div>
-            )}
           </section>
         </div>
 
@@ -1253,13 +1263,13 @@ function App() {
           <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 z-10">
             <div className="flex justify-between items-center">
               <h2 className="text-sm font-bold text-gray-900">Constituency Detail</h2>
-            <button
-              type="button"
+              <button
+                type="button"
                 className="text-gray-400 hover:text-gray-600 transition-colors"
-              onClick={() => setSelectedFeature(null)}
-            >
+                onClick={() => setSelectedFeature(null)}
+              >
                 <FaTimes className="text-sm" />
-            </button>
+              </button>
             </div>
           </div>
 
@@ -1279,23 +1289,32 @@ function App() {
               <DetailRow label="Registered Voters" value={formatNumber(selectedFeature.properties?.registered_voters)} />
 
               <div className="space-y-2 pt-2 border-t border-gray-200">
-              <DetailRow label="Member of Parliament" value={selectedFeature.properties?.mp} />
-                
+                <DetailRow
+                  label="Member of Parliament"
+                  value={selectedFeature.properties?.mp}
+                />
+
                 <div className="space-y-2">
                   <DetailRow
                     label="Party"
                     value={
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs text-white ${detailPartyClass}`}>
-                    {selectedFeature.properties?.party_label}
-                  </span>
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-xs text-white ${detailPartyClass}`}
+                      >
+                        {selectedFeature.properties?.party_label}
+                      </span>
                     }
                   />
 
                   <div className="space-y-1.5 bg-gray-50 p-2 rounded-lg">
                     <DetailRow
-                  label="Impeachment Vote"
+                      label="Impeachment Vote"
                       value={
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(selectedFeature.properties?.impeachment_label)}`}>
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(
+                            selectedFeature.properties?.impeachment_label
+                          )}`}
+                        >
                           {selectedFeature.properties?.impeachment_label || 'N/A'}
                         </span>
                       }
@@ -1303,39 +1322,16 @@ function App() {
                     <DetailRow
                       label="Budget Vote"
                       value={
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(selectedFeature.properties?.budget_label)}`}>
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(
+                            selectedFeature.properties?.budget_label
+                          )}`}
+                        >
                           {selectedFeature.properties?.budget_label || 'N/A'}
                         </span>
                       }
                     />
                   </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 pt-2 border-t border-gray-200">
-                <p className="text-xs font-bold text-gray-900 mb-1.5">2024 Election Results</p>
-                <div className="space-y-1.5">
-                  {detailedElectionEntries.length ? (
-                    detailedElectionEntries.map(([candidate, percentage]) => (
-                      <div key={candidate} className="text-xs">
-                        <div className="flex justify-between mb-1">
-                          <span className="font-medium">{candidate}</span>
-                          <span className="font-semibold">{percentage}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5">
-                          <div
-                            className="h-1.5 rounded-full"
-                            style={{
-                              width: `${percentage}%`,
-                              backgroundColor: getElectionColor(candidate),
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-gray-500">No election data available</p>
-                  )}
                 </div>
               </div>
             </div>
@@ -1360,12 +1356,12 @@ function App() {
             </div>
 
             <div className="space-y-4 text-gray-700 text-sm">
-              <p>This application visualizes Kenya's constituency election data using interactive maps.</p>
+              <p>This application visualizes Kenya's constituency data using interactive maps.</p>
               <div>
                 <h3 className="font-semibold">Features</h3>
                 <ul className="list-disc list-inside space-y-1 mt-2">
-                  <li>Color constituencies by party, impeachment vote, or 2024 election results</li>
-                  <li>Filter by county, party, impeachment vote, or election candidate</li>
+                  <li>Color constituencies by party, impeachment vote, budget vote, or registered voters</li>
+                  <li>Filter by county, party, or impeachment vote</li>
                   <li>Explore detailed stats per constituency</li>
                   <li>Review aggregated summaries of party representation and voting patterns</li>
                 </ul>
@@ -1434,17 +1430,6 @@ const SummaryBlock = ({ summary, parties }) => (
       {summary.budget && (
         <SummaryBreakdown title="2024 Budget Vote" data={summary.budget} colorMap={BUDGET_COLORS} />
       )}
-
-      <div className="bg-purple-50 p-4 rounded-lg shadow-sm">
-        <p className="text-sm text-purple-700 font-medium">2024 Election</p>
-        <p className="text-sm mt-2">
-          Winner: <span className="font-bold">{summary.leadingCandidate || 'N/A'}</span>
-        </p>
-        <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-          <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${summary.leadingShare}%` }} />
-        </div>
-        <p className="text-xs text-right mt-1">{summary.leadingShare}% of constituencies</p>
-      </div>
     </div>
 
 
@@ -1468,7 +1453,7 @@ const SummaryBreakdown = ({ title, data, colorMap = VOTE_COLORS }) => (
   </div>
 )
 
-const MapLegend = ({ mode, parties, features, getElectionColor, registeredVoterClassification }) => {
+const MapLegend = ({ mode, parties, features, registeredVoterClassification }) => {
   const partyLegendSource = parties.length
     ? parties
     : Array.from(Object.keys(PARTY_COLORS)).map((value) => ({
@@ -1476,27 +1461,12 @@ const MapLegend = ({ mode, parties, features, getElectionColor, registeredVoterC
       label: value.charAt(0).toUpperCase() + value.slice(1),
     }))
 
-  const electionItems = useMemo(() => {
-    if (mode !== 'election') {
-      return []
-    }
-    const seen = new Map()
-    features.forEach((feature) => {
-      Object.keys(feature.properties?.election_results || {}).forEach((candidate) => {
-        if (!seen.has(candidate)) {
-          seen.set(candidate, getElectionColor(candidate))
-        }
-      })
-    })
-    return Array.from(seen.entries())
-      .slice(0, 8)
-      .map(([label, color]) => ({ label, color }))
-  }, [mode, features, getElectionColor])
-
   const legendItems = useMemo(() => {
     if (mode === 'party') {
       return partyLegendSource.map((party) => ({
+        key: party.value,
         label: party.label,
+        title: PARTY_FULL_NAMES[party.value] || party.label,
         color: PARTY_COLORS[party.value] || PARTY_COLORS.others,
       }))
     }
@@ -1512,16 +1482,6 @@ const MapLegend = ({ mode, parties, features, getElectionColor, registeredVoterC
         color: BUDGET_COLORS[option.key],
       }))
     }
-    if (mode === 'election') {
-      return electionItems.length
-        ? electionItems
-        : [
-          {
-            label: 'Leading candidate per constituency',
-            color: '#7c3aed',
-          },
-        ]
-    }
     if (mode === 'registered_voters' && registeredVoterClassification?.breaks?.length) {
       const { breaks, colors } = registeredVoterClassification
       return breaks.slice(0, -1).map((value, index) => ({
@@ -1532,23 +1492,19 @@ const MapLegend = ({ mode, parties, features, getElectionColor, registeredVoterC
       }))
     }
     return []
-  }, [mode, partyLegendSource, electionItems, registeredVoterClassification])
+  }, [mode, partyLegendSource, registeredVoterClassification])
 
   return (
     <div className="map-legend">
       <p className="map-legend__title">Legend</p>
-      {mode === 'election' && !electionItems.length ? (
-        <p className="map-legend__note">
-          Color shows the leading 2024 candidate per constituency. Candidates appear once data loads.
-        </p>
-      ) : mode === 'registered_voters' && !registeredVoterClassification?.breaks?.length ? (
+      {mode === 'registered_voters' && !registeredVoterClassification?.breaks?.length ? (
         <p className="map-legend__note">Registered voter data unavailable for coloring.</p>
       ) : (
         <ul className="map-legend__list">
           {legendItems.map((item) => (
-            <li key={item.label} className="map-legend__item">
+            <li key={item.key || item.label} className="map-legend__item">
               <span className="map-legend__swatch" style={{ backgroundColor: item.color }} />
-              <span>{item.label}</span>
+              <span title={item.title || item.label}>{item.label}</span>
             </li>
           ))}
         </ul>
@@ -1608,15 +1564,6 @@ const PopupContent = ({ feature, colorMode, position, formatNumber }) => {
         <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
       </>
     )
-  } else if (colorMode === 'election') {
-    const winner = determineWinner(props.election_results)
-    content = (
-      <>
-        <div className="font-bold text-gray-900">{name}</div>
-        <div className="font-bold text-gray-900">Winner: {winner || 'N/A'}</div>
-        <div className="font-bold text-gray-900">MP: {props.mp || 'N/A'}</div>
-      </>
-    )
   } else {
     // Default fallback
     content = (
@@ -1660,16 +1607,12 @@ const VoteBadge = ({ label, value }) => {
   )
 }
 
-const getStyleForFeature = (props = {}, mode, getElectionColor, registeredVoterClassification) => {
+const getStyleForFeature = (props = {}, mode, registeredVoterClassification) => {
   if (mode === 'impeachment') {
     return baseStyle(getVoteColor(props.impeachment_key))
   }
   if (mode === 'budget') {
     return baseStyle(getBudgetColor(props.budget_key))
-  }
-  if (mode === 'election') {
-    const winner = determineWinner(props.election_results)
-    return baseStyle(getElectionColor(winner))
   }
   if (mode === 'registered_voters') {
     return baseStyle(getRegisteredVoterColor(props.registered_voters, registeredVoterClassification))
