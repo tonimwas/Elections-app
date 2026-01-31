@@ -61,7 +61,7 @@ import os
 import sys
 from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # use this if setting up on Windows 10 with GDAL installed from OSGeo4W using defaults
 
@@ -95,7 +95,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'elections.wsgi.application'
 
-GDAL_LIBRARY_PATH = r'd:\projects2025\electionssystem\data\webapp\electenv\lib\site-packages\osgeo\gdal.dll'
+GDAL_LIBRARY_PATH = r'C:\Users\user\Documents\2026\Web\electenv\Lib\site-packages\osgeo\gdal.dll'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
