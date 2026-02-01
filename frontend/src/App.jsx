@@ -72,8 +72,11 @@ const normalizeJenksColors = (breaks) => {
   }
   return REGISTERED_VOTER_COLORS
 }
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
+import { Modal } from 'bootstrap'
+import Chart from 'chart.js/auto'
 import { FaFilter, FaInfoCircle, FaTimes } from 'react-icons/fa'
 import 'leaflet/dist/leaflet.css'
 import './index.css'
@@ -131,14 +134,14 @@ const REGISTERED_VOTER_COLORS = [
 ]
 const JENKS_CLASS_COUNT = 10
 const VOTE_COLORS = {
-  yes: '#e53e3e',
-  no: '#38a169',
-  abstain: '#ecc94b',
+  yes: '#10B981',
+  no: '#EF4444',
+  abstain: '#F59E0B',
 }
 const BUDGET_COLORS = {
-  yes: '#2563eb',
-  no: '#b91c1c',
-  abstain: '#d97706',
+  yes: '#0EA5E9',
+  no: '#EF4444',
+  abstain: '#F59E0B',
 }
 const PARTY_BADGE_KEYS = new Set(Object.keys(PARTY_COLORS))
 const MAP_PADDING = [20, 20]
@@ -266,13 +269,10 @@ const defaultFilters = {
 function App() {
   const [features, setFeatures] = useState([])
   const [filters, setFilters] = useState(defaultFilters)
-  const [activeFilterTypes, setActiveFilterTypes] = useState([])
-  const [newFilterType, setNewFilterType] = useState('')
   const [colorMode, setColorMode] = useState('party')
   const [selectedFeature, setSelectedFeature] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [hoveredFeature, setHoveredFeature] = useState(null)
   const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 })
@@ -281,10 +281,17 @@ function App() {
   const mapContainerRef = useRef(null)
   const mapRef = useRef(null)
   const geoJsonLayerRef = useRef(null)
-  const detailMapContainerRef = useRef(null)
-  const detailMapRef = useRef(null)
-  const detailLayerRef = useRef(null)
   const selectedLayerRef = useRef(null)
+  const layerControlRef = useRef(null)
+  const layerControlButtonsRef = useRef({})
+
+  const modalElementRef = useRef(null)
+  const modalInstanceRef = useRef(null)
+
+  const partyChartCanvasRef = useRef(null)
+  const impeachmentChartCanvasRef = useRef(null)
+  const budgetChartCanvasRef = useRef(null)
+  const chartsRef = useRef({ party: null, impeachment: null, budget: null })
 
   useEffect(() => {
     const fetchData = async () => {
@@ -384,37 +391,7 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!selectedFeature || !detailMapContainerRef.current) {
-      return
-    }
-    if (!detailMapRef.current) {
-      detailMapRef.current = L.map(detailMapContainerRef.current).setView(DEFAULT_CENTER, 10)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(detailMapRef.current)
-    }
-    if (detailLayerRef.current) {
-      detailLayerRef.current.remove()
-    }
-    detailLayerRef.current = L.geoJSON(selectedFeature, {
-      style: {
-        fillColor: '#4299e1',
-        weight: 2,
-        opacity: 1,
-        color: '#2b6cb0',
-        fillOpacity: 0.6,
-      },
-    }).addTo(detailMapRef.current)
-    const bounds = detailLayerRef.current.getBounds()
-    if (bounds.isValid()) {
-      detailMapRef.current.fitBounds(bounds, { padding: [10, 10] })
-    }
-    setTimeout(() => {
-      detailMapRef.current?.invalidateSize()
-    }, 100)
-  }, [selectedFeature])
+  // (modal + charts are initialized later, after derived data is defined)
 
   // Center map and highlight selected feature - optimized
   useEffect(() => {
@@ -679,6 +656,53 @@ function App() {
     }
   }, [filteredFeatures, colorMode, registeredVoterClassification])
 
+  useEffect(() => {
+    if (!mapRef.current) {
+      return
+    }
+    if (layerControlRef.current) {
+      layerControlRef.current.remove()
+      layerControlRef.current = null
+      layerControlButtonsRef.current = {}
+    }
+
+    const control = L.control({ position: 'topright' })
+    control.onAdd = () => {
+      const container = L.DomUtil.create('div', 'leaflet-bar bi-layer-control')
+      container.style.background = '#ffffff'
+      container.style.borderRadius = '6px'
+      container.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'
+      container.style.padding = '8px'
+      container.style.display = 'flex'
+      container.style.gap = '6px'
+
+      const modes = [
+        { key: 'party', label: 'Party' },
+        { key: 'budget', label: 'Budget' },
+        { key: 'impeachment', label: 'Impeachment' },
+      ]
+
+      modes.forEach((mode) => {
+        const btn = L.DomUtil.create('button', 'btn btn-sm', container)
+        btn.type = 'button'
+        btn.textContent = mode.label
+        btn.className = `btn btn-sm ${colorMode === mode.key ? 'btn-primary' : 'btn-outline-primary'}`
+        btn.style.fontWeight = '600'
+        L.DomEvent.disableClickPropagation(btn)
+        L.DomEvent.on(btn, 'click', (e) => {
+          L.DomEvent.preventDefault(e)
+          setColorMode(mode.key)
+        })
+        layerControlButtonsRef.current[mode.key] = btn
+      })
+
+      return container
+    }
+
+    control.addTo(mapRef.current)
+    layerControlRef.current = control
+  }, [colorMode])
+
   const handleFilterValueToggle = (filterType, value) => {
     setFilters((prev) => {
       const currentValues = prev[filterType] || []
@@ -697,27 +721,10 @@ function App() {
     })
   }
 
-  const handleFilterTypeSelect = (filterType) => {
-    if (filterType && !activeFilterTypes.includes(filterType)) {
-      setActiveFilterTypes((prev) => [...prev, filterType])
-      setNewFilterType('')
-    }
-  }
-
-  const handleRemoveFilter = (filterType) => {
-    setActiveFilterTypes((prev) => prev.filter((type) => type !== filterType))
-    setFilters((prev) => ({ ...prev, [filterType]: [] }))
-  }
-
   const handleResetFilters = () => {
     setFilters(defaultFilters)
-    setActiveFilterTypes([])
-    setNewFilterType('')
+    setExpandedFilters({})
   }
-
-  const availableFilterTypes = FILTER_TYPES.filter(
-    (type) => !activeFilterTypes.includes(type.key)
-  )
 
   const handleColorModeChange = (mode) => {
     setColorMode(mode)
@@ -743,601 +750,613 @@ function App() {
     }
   }
 
-  const detailPartyClass = selectedFeature
-    ? PARTY_BADGE_KEYS.has(selectedFeature.properties?.party_key)
-      ? `party-${selectedFeature.properties.party_key}`
-      : 'party-others'
-    : ''
+  const totalConstituencies = features.length
+  const filteredConstituencies = filteredFeatures.length
+
+  const topParties = useMemo(() => {
+    const counts = summary.parties || {}
+    const entries = Object.entries(counts)
+      .map(([key, value]) => ({ key, value: Number(value) || 0 }))
+      .sort((a, b) => b.value - a.value)
+
+    const top = entries.slice(0, 6)
+    const othersCount = entries.slice(6).reduce((acc, item) => acc + item.value, 0)
+    const normalized = top.map((item) => ({
+      ...item,
+      label: PARTY_FULL_NAMES[item.key] || (parties.find((p) => p.value === item.key)?.label || item.key),
+      color: PARTY_COLORS[item.key] || PARTY_COLORS.others,
+    }))
+    if (othersCount > 0) {
+      normalized.push({ key: 'others', value: othersCount, label: 'Others', color: PARTY_COLORS.others })
+    }
+    return normalized
+  }, [summary.parties, parties])
+
+  useEffect(() => {
+    if (!modalElementRef.current) {
+      return
+    }
+
+    const element = modalElementRef.current
+    if (!modalInstanceRef.current) {
+      modalInstanceRef.current = new Modal(element, {
+        backdrop: true,
+        keyboard: true,
+        focus: true,
+      })
+    }
+
+    const handleHidden = () => {
+      setSelectedFeature(null)
+    }
+
+    element.addEventListener('hidden.bs.modal', handleHidden)
+    return () => {
+      element.removeEventListener('hidden.bs.modal', handleHidden)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!modalInstanceRef.current) {
+      return
+    }
+    if (selectedFeature) {
+      modalInstanceRef.current.show()
+    } else {
+      modalInstanceRef.current.hide()
+    }
+  }, [selectedFeature])
+
+  useEffect(() => {
+    if (!partyChartCanvasRef.current) {
+      return
+    }
+    if (chartsRef.current.party) {
+      chartsRef.current.party.destroy()
+      chartsRef.current.party = null
+    }
+    if (!topParties.length) {
+      return
+    }
+
+    chartsRef.current.party = new Chart(partyChartCanvasRef.current, {
+      type: 'doughnut',
+      data: {
+        labels: topParties.map((p) => p.key.toUpperCase()),
+        datasets: [
+          {
+            data: topParties.map((p) => p.value),
+            backgroundColor: topParties.map((p) => p.color),
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: true },
+        },
+        cutout: '68%',
+      },
+    })
+
+    return () => {
+      if (chartsRef.current.party) {
+        chartsRef.current.party.destroy()
+        chartsRef.current.party = null
+      }
+    }
+  }, [topParties])
+
+  useEffect(() => {
+    const initStackedBar = (key, canvasRef, dataset, colors) => {
+      if (!canvasRef.current) {
+        return
+      }
+      if (chartsRef.current[key]) {
+        chartsRef.current[key].destroy()
+        chartsRef.current[key] = null
+      }
+
+      chartsRef.current[key] = new Chart(canvasRef.current, {
+        type: 'bar',
+        data: {
+          labels: [''],
+          datasets: [
+            {
+              label: 'YES',
+              data: [dataset.yes || 0],
+              backgroundColor: colors.yes,
+              borderWidth: 0,
+            },
+            {
+              label: 'NO',
+              data: [dataset.no || 0],
+              backgroundColor: colors.no,
+              borderWidth: 0,
+            },
+            {
+              label: 'ABSTAIN',
+              data: [dataset.abstain || 0],
+              backgroundColor: colors.abstain,
+              borderWidth: 0,
+            },
+          ],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true, display: false },
+            y: { stacked: true, display: false },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: true },
+          },
+        },
+      })
+    }
+
+    initStackedBar('impeachment', impeachmentChartCanvasRef, summary.impeachment || {}, VOTE_COLORS)
+    initStackedBar('budget', budgetChartCanvasRef, summary.budget || {}, BUDGET_COLORS)
+
+    return () => {
+      ;['impeachment', 'budget'].forEach((key) => {
+        if (chartsRef.current[key]) {
+          chartsRef.current[key].destroy()
+          chartsRef.current[key] = null
+        }
+      })
+    }
+  }, [summary.impeachment, summary.budget])
 
   return (
-    <div className="bg-gray-100 min-h-screen flex flex-col">
-      <header className="bg-white shadow-md">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-xl font-semibold text-gray-800">
-            Kenya Constituency Visualization
-          </h1>
-          <div className="flex items-center space-x-3">
-            <button
-              type="button"
-              className="md:hidden flex items-center justify-center bg-blue-600 text-white px-3 py-2 rounded-md"
-              onClick={() => setMobileFiltersOpen(true)}
-            >
-              <FaFilter className="mr-2" /> Filters
-            </button>
-            <button
-              type="button"
-              className="flex items-center justify-center bg-gray-200 text-gray-700 px-3 py-2 rounded-md"
-              onClick={() => setAboutOpen(true)}
-            >
-              <FaInfoCircle className="mr-2" /> About
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex flex-1 overflow-hidden">
-        <aside className="hidden md:block w-64 bg-white shadow-sm p-4 overflow-y-auto border-r border-gray-200">
-          <div className="filter space-y-4">
-            {activeFilterTypes.length > 0 && (
-              <div className="space-y-2">
-                {activeFilterTypes.map((filterType) => {
-                  const filterConfig = FILTER_TYPES.find((f) => f.key === filterType)
-                  let options = []
-                  let placeholder = ''
-
-                  if (filterType === 'county') {
-                    options = counties.map((county) => ({ value: county, label: county }))
-                    placeholder = 'All Counties'
-                  } else if (filterType === 'party') {
-                    options = parties
-                    placeholder = 'All Parties'
-                  } else if (filterType === 'impeachment') {
-                    options = ['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))
-                    placeholder = 'All Votes'
-                  }
-
-                  const selectedValues = filters[filterType] || []
-                  const isExpanded = !!expandedFilters[filterType]
-                  const selectedCount = selectedValues.length
-
-                  return (
-                    <div
-                      key={filterType}
-                      className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
-                      onMouseLeave={() => {
-                        setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
-                      }}
-                    >
-                      <div
-                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
-                        onClick={() => {
-                          setExpandedFilters((prev) => ({
-                            ...prev,
-                            [filterType]: !prev[filterType],
-                          }))
-                        }}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <label className="text-sm font-semibold text-gray-700 cursor-pointer">
-                            {filterConfig?.label || filterType}
-                          </label>
-                          {selectedCount > 0 && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                              {selectedCount}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={isExpanded ? 'Collapse filter' : 'Expand filter'}
-                          aria-expanded={isExpanded}
-                          className="p-2 -m-2 rounded hover:bg-gray-100"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setExpandedFilters((prev) => ({
-                              ...prev,
-                              [filterType]: !prev[filterType],
-                            }))
-                          }}
-                        >
-                          <svg
-                            className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Selected items (chips) shown above dropdown options so remove buttons stay accessible */}
-                      {selectedValues.length > 0 && (
-                        <div className="px-3 pb-2 border-t border-gray-100">
-                          <div className="flex flex-wrap gap-1.5 pt-2">
-                            {selectedValues.map((value) => {
-                              const option = options.find((opt) => opt.value === value)
-                              return (
-                                <span
-                                  key={value}
-                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
-                                >
-                                  <span>{option?.label || value}</span>
-                                  <button
-                                    type="button"
-                                    aria-label={`Remove ${(option?.label || value).toString()}`}
-                                    className="hover:bg-blue-200 rounded-full p-1 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleFilterValueToggle(filterType, value)
-                                    }}
-                                    title="Remove"
-                                  >
-                                    <FaTimes className="w-3 h-3" />
-                                  </button>
-                                </span>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {isExpanded && (
-                        <div className="max-h-64 overflow-y-auto border-t border-gray-100">
-                          {options.map((option) => {
-                            const isSelected = selectedValues.includes(option.value)
-                            return (
-                              <label
-                                key={option.value}
-                                className="flex items-center space-x-2 cursor-pointer hover:bg-blue-50 px-3 py-2"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleFilterValueToggle(filterType, option.value)
-                                  setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
-                                }}
-                              >
-                                <div className="relative flex items-center justify-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => {}}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                  />
-                                  {isSelected && (
-                                    <svg
-                                      className="absolute w-3 h-3 text-white pointer-events-none"
-                                      fill="currentColor"
-                                      viewBox="0 0 20 20"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  )}
-                                </div>
-                                <span className="text-sm text-gray-700 flex-1">{option.label}</span>
-                              </label>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {availableFilterTypes.length > 0 && (
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Filter by</label>
-                <select
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  value={newFilterType}
-                  onChange={(e) => {
-                    const selectedType = e.target.value
-                    if (selectedType) {
-                      handleFilterTypeSelect(selectedType)
-                    }
-                  }}
-                >
-                  <option value="">Select filter type...</option>
-                  {availableFilterTypes.map((type) => (
-                    <option key={type.key} value={type.key}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {activeFilterTypes.length > 0 && (
+    <div className="d-flex flex-column vh-100" style={{ background: '#f4f6f9' }}>
+      <nav className="navbar navbar-dark navbar-expand-lg" style={{ background: '#0b1f3a' }}>
+        <div className="container-fluid">
+          <span className="navbar-brand fw-bold">Kenya Legislative Dashboard</span>
+          <button
+            className="navbar-toggler"
+            type="button"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#dashboardSidebar"
+            aria-controls="dashboardSidebar"
+          >
+            <span className="navbar-toggler-icon" />
+          </button>
+          <div className="collapse navbar-collapse">
+            <div className="navbar-nav ms-auto align-items-lg-center gap-2">
               <button
                 type="button"
-                className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition text-sm"
-                onClick={handleResetFilters}
+                className="btn btn-sm btn-outline-light"
+                onClick={() => setAboutOpen(true)}
               >
-                Reset All Filters
+                About
               </button>
-            )}
-          </div>
-
-          <SummaryBlock summary={summary} parties={parties} />
-        </aside>
-
-        <div className={`left-panel ${mobileFiltersOpen ? 'open' : ''}`}>
-          <div className="color-mode-card mt-6 mb-6">
-            <div className="color-mode-card__header">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Color Map By</p>
-                <p className="text-xs text-gray-500">Choose data layer</p>
-              </div>
-            </div>
-            <div className="color-mode-card__options">
-              {COLOR_MODES.map((mode) => (
-                <button
-                  key={mode.key}
-                  type="button"
-                  className={`color-mode-button ${colorMode === mode.key ? 'is-active' : ''}`}
-                  onClick={() => handleColorModeChange(mode.key)}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-between items-center mb-3">
-            <button
-              type="button"
-              className="text-gray-500 hover:text-gray-700"
-              onClick={() => setMobileFiltersOpen(false)}
-            >
-              <FaTimes />
-            </button>
-          </div>
-
-          <div className="filter space-y-4">
-            {activeFilterTypes.length > 0 && (
-              <div className="space-y-2">
-                {activeFilterTypes.map((filterType) => {
-                  const filterConfig = FILTER_TYPES.find((f) => f.key === filterType)
-                  let options = []
-                  let placeholder = ''
-
-                  if (filterType === 'county') {
-                    options = counties.map((county) => ({ value: county, label: county }))
-                    placeholder = 'All Counties'
-                  } else if (filterType === 'party') {
-                    options = parties
-                    placeholder = 'All Parties'
-                  } else if (filterType === 'impeachment') {
-                    options = ['Yes', 'No', 'Abstain'].map((label) => ({ value: label, label }))
-                    placeholder = 'All Votes'
-                  }
-
-                  const selectedValues = filters[filterType] || []
-                  const isExpanded = !!expandedFilters[filterType]
-                  const selectedCount = selectedValues.length
-
-                  return (
-                    <div
-                      key={filterType}
-                      className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
-                      onMouseLeave={() => {
-                        setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
-                      }}
-                    >
-                      <div
-                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
-                        onClick={() => {
-                          setExpandedFilters((prev) => ({
-                            ...prev,
-                            [filterType]: !prev[filterType],
-                          }))
-                        }}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <label className="text-sm font-semibold text-gray-700 cursor-pointer">
-                            {filterConfig?.label || filterType}
-                          </label>
-                          {selectedCount > 0 && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                              {selectedCount}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={isExpanded ? 'Collapse filter' : 'Expand filter'}
-                          aria-expanded={isExpanded}
-                          className="p-2 -m-2 rounded hover:bg-gray-100"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setExpandedFilters((prev) => ({
-                              ...prev,
-                              [filterType]: !prev[filterType],
-                            }))
-                          }}
-                        >
-                          <svg
-                            className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Selected items (chips) shown above dropdown options so remove buttons stay accessible */}
-                      {selectedValues.length > 0 && (
-                        <div className="px-3 pb-2 border-t border-gray-100">
-                          <div className="flex flex-wrap gap-1.5 pt-2">
-                            {selectedValues.map((value) => {
-                              const option = options.find((opt) => opt.value === value)
-                              return (
-                                <span
-                                  key={value}
-                                  className="inline-flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium"
-                                >
-                                  <span>{option?.label || value}</span>
-                                  <button
-                                    type="button"
-                                    aria-label={`Remove ${(option?.label || value).toString()}`}
-                                    className="hover:bg-blue-200 rounded-full p-1 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleFilterValueToggle(filterType, value)
-                                    }}
-                                    title="Remove"
-                                  >
-                                    <FaTimes className="w-3 h-3" />
-                                  </button>
-                                </span>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {isExpanded && (
-                        <div className="max-h-64 overflow-y-auto border-t border-gray-100">
-                          {options.map((option) => {
-                            const isSelected = selectedValues.includes(option.value)
-                            return (
-                              <label
-                                key={option.value}
-                                className="flex items-center space-x-2 cursor-pointer hover:bg-blue-50 px-3 py-2"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleFilterValueToggle(filterType, option.value)
-                                  setExpandedFilters((prev) => ({ ...prev, [filterType]: false }))
-                                }}
-                              >
-                                <div className="relative flex items-center justify-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => {}}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                  />
-                                  {isSelected && (
-                                    <svg
-                                      className="absolute w-3 h-3 text-white pointer-events-none"
-                                      fill="currentColor"
-                                      viewBox="0 0 20 20"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  )}
-                                </div>
-                                <span className="text-sm text-gray-700 flex-1">{option.label}</span>
-                              </label>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {availableFilterTypes.length > 0 && (
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Filter by</label>
-                <select
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  value={newFilterType}
-                  onChange={(e) => {
-                    const selectedType = e.target.value
-                    if (selectedType) {
-                      handleFilterTypeSelect(selectedType)
-                    }
-                  }}
-                >
-                  <option value="">Select filter type...</option>
-                  {availableFilterTypes.map((type) => (
-                    <option key={type.key} value={type.key}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md"
-                onClick={() => setMobileFiltersOpen(false)}
+              <a
+                className="btn btn-sm btn-outline-light"
+                href="https://www.openstreetmap.org/copyright"
+                target="_blank"
+                rel="noreferrer"
               >
-                Apply
-              </button>
-              {activeFilterTypes.length > 0 && (
-                <button
-                  type="button"
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md"
-                  onClick={handleResetFilters}
-                >
-                  Reset
-                </button>
-              )}
+                Data Source
+              </a>
             </div>
           </div>
-
-          <SummaryBlock summary={summary} parties={parties} />
         </div>
+      </nav>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <section className="flex-1 m-4 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="map-pane h-full flex flex-col">
-              <div className="map-pane__actions flex-shrink-0">
-                <button
-                  type="button"
-                  className="bg-white/95 text-sm font-medium text-gray-800 px-3 py-2 rounded shadow hover:bg-white"
-                  onClick={handleResetMapView}
-                >
-                  Reset map extent
-                </button>
-                {selectedFeature && (
+      <div className="d-flex flex-grow-1 overflow-hidden">
+        <aside className="d-none d-lg-flex flex-column border-end bg-white" style={{ width: 350 }}>
+          <div className="p-3 overflow-auto">
+            <div className="mb-3">
+              <div className="btn-group w-100" role="group" aria-label="Map view">
+                {['party', 'budget', 'impeachment', 'registered_voters'].map((mode) => (
                   <button
+                    key={mode}
                     type="button"
-                    className="bg-white/95 text-sm font-medium text-gray-800 px-3 py-2 rounded shadow hover:bg-white"
-                    onClick={handleZoomToSelected}
+                    className={`btn btn-sm ${colorMode === mode ? 'btn-primary' : 'btn-outline-primary'}`}
+                    onClick={() => handleColorModeChange(mode)}
                   >
-                    {`Zoom to extent of "${selectedFeature.properties?.display_name ||
-                      selectedFeature.properties?.name ||
-                      'Constituency'
-                      }"`}
+                    {(COLOR_MODES.find((item) => item.key === mode)?.label || mode).replace('2024 ', '')}
                   </button>
-                )}
+                ))}
               </div>
-
-              <div className="map-frame relative overflow-hidden">
-                <div className="relative h-full w-full">
-                  <div ref={mapContainerRef} className="map-canvas" />
-                  {hoveredFeature && popupPosition.x > 0 && popupPosition.y > 0 && (
-                    <PopupContent
-                      feature={hoveredFeature}
-                      colorMode={colorMode}
-                      position={popupPosition}
-                      formatNumber={formatNumber}
-                    />
-                  )}
-                </div>
-                <MapLegend
-                  mode={colorMode}
-                  parties={parties}
-                  features={features}
-                  registeredVoterClassification={registeredVoterClassification}
-                />
-              </div>
-              {(loading || error) && (
-                <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center rounded-lg">
-                  {loading ? (
-                    <div className="flex items-center space-x-3">
-                      <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12" />
-                      <p className="text-gray-700">Loading map data...</p>
-                    </div>
-                  ) : (
-                    <p className="text-red-600 font-medium">{error}</p>
-                  )}
-                </div>
-              )}
             </div>
-          </section>
-        </div>
 
-        <aside
-          className={`${selectedFeature ? 'block' : 'hidden'} w-80 bg-gradient-to-b from-white to-gray-50 shadow-lg border-l border-gray-200 overflow-y-auto`}
-        >
-          <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 z-10">
-            <div className="flex justify-between items-center">
-              <h2 className="text-sm font-bold text-gray-900">Constituency Detail</h2>
-              <button
-                type="button"
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-                onClick={() => setSelectedFeature(null)}
-              >
-                <FaTimes className="text-sm" />
-              </button>
-            </div>
-          </div>
-
-          {selectedFeature ? (
-            <div className="px-4 py-3 space-y-2.5 text-xs font-sans">
-              <div ref={detailMapContainerRef} className="mb-3 h-32 bg-gray-100 rounded-lg" />
-
-              <DetailRow
-                label="Constituency"
-                value={selectedFeature.properties?.display_name || selectedFeature.properties?.name}
-              />
-              {selectedFeature.properties?.updated_name &&
-                selectedFeature.properties?.updated_name !== selectedFeature.properties?.name && (
-                  <DetailRow label="Original Name" value={selectedFeature.properties?.name} />
-                )}
-              <DetailRow label="County" value={selectedFeature.properties?.county} />
-              <DetailRow label="Registered Voters" value={formatNumber(selectedFeature.properties?.registered_voters)} />
-
-              <div className="space-y-2 pt-2 border-t border-gray-200">
-                <DetailRow
-                  label="Member of Parliament"
-                  value={selectedFeature.properties?.mp}
-                />
-
-                <div className="space-y-2">
-                  <DetailRow
-                    label="Party"
-                    value={
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs text-white ${detailPartyClass}`}
-                      >
-                        {selectedFeature.properties?.party_label}
-                      </span>
-                    }
-                  />
-
-                  <div className="space-y-1.5 bg-gray-50 p-2 rounded-lg">
-                    <DetailRow
-                      label="Impeachment Vote"
-                      value={
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(
-                            selectedFeature.properties?.impeachment_label
-                          )}`}
-                        >
-                          {selectedFeature.properties?.impeachment_label || 'N/A'}
-                        </span>
-                      }
-                    />
-                    <DetailRow
-                      label="Budget Vote"
-                      value={
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-xs text-white vote-${normalizeKey(
-                            selectedFeature.properties?.budget_label
-                          )}`}
-                        >
-                          {selectedFeature.properties?.budget_label || 'N/A'}
-                        </span>
-                      }
-                    />
+            <div className="card shadow-sm mb-3">
+              <div className="card-body">
+                <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                  Key Stats
+                </div>
+                <div className="row g-3 mt-1">
+                  <div className="col-6">
+                    <div className="text-secondary" style={{ fontSize: 12 }}>Total Constituencies</div>
+                    <div className="fw-bold" style={{ fontSize: 20 }}>{totalConstituencies || 0}</div>
+                  </div>
+                  <div className="col-6">
+                    <div className="text-secondary" style={{ fontSize: 12 }}>Filtered Constituencies</div>
+                    <div className="fw-bold" style={{ fontSize: 20 }}>{filteredConstituencies || 0}</div>
+                  </div>
+                  <div className="col-12">
+                    <div className="text-secondary" style={{ fontSize: 12 }}>Registered Voters (filtered)</div>
+                    <div className="fw-bold" style={{ fontSize: 20 }}>{summary.registeredVoters ? formatNumber(summary.registeredVoters) : 'N/A'}</div>
                   </div>
                 </div>
               </div>
             </div>
-          ) : (
-            <p className="text-xs text-gray-500 px-4 py-3">Select a constituency on the map to see details.</p>
-          )}
+
+            <div className="card shadow-sm mb-3">
+              <div className="card-body">
+                <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                  Parliamentary Party Strength
+                </div>
+                <div style={{ height: 180 }} className="position-relative mt-2">
+                  <canvas ref={partyChartCanvasRef} />
+                </div>
+                <div className="mt-3" style={{ fontSize: 13 }}>
+                  {topParties.map((party) => (
+                    <div key={party.key} className="d-flex align-items-center justify-content-between py-1">
+                      <div className="d-flex align-items-center gap-2">
+                        <span style={{ width: 10, height: 10, borderRadius: 999, background: party.color, display: 'inline-block' }} />
+                        <span className="text-dark">{party.key.toUpperCase()}</span>
+                      </div>
+                      <span className="fw-semibold text-dark">{party.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="card shadow-sm mb-3">
+              <div className="card-body">
+                <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                  Vote Outcomes
+                </div>
+                <div className="mt-2">
+                  <div className="text-secondary" style={{ fontSize: 12 }}>Impeachment</div>
+                  <div style={{ height: 38 }} className="position-relative">
+                    <canvas ref={impeachmentChartCanvasRef} />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-secondary" style={{ fontSize: 12 }}>Budget 2024</div>
+                  <div style={{ height: 38 }} className="position-relative">
+                    <canvas ref={budgetChartCanvasRef} />
+                  </div>
+                </div>
+                <div className="mt-3 d-flex flex-wrap gap-2" style={{ fontSize: 12 }}>
+                  <span className="d-flex align-items-center gap-2">
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: VOTE_COLORS.yes, display: 'inline-block' }} /> YES
+                  </span>
+                  <span className="d-flex align-items-center gap-2">
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: VOTE_COLORS.no, display: 'inline-block' }} /> NO
+                  </span>
+                  <span className="d-flex align-items-center gap-2">
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: VOTE_COLORS.abstain, display: 'inline-block' }} /> ABSTAIN
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="card shadow-sm">
+              <div className="card-body">
+                <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                  Filter Map
+                </div>
+                <div className="accordion mt-2" id="filterAccordion">
+                  <div className="accordion-item">
+                    <h2 className="accordion-header" id="headingCounty">
+                      <button className="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCounty">
+                        By County
+                      </button>
+                    </h2>
+                    <div id="collapseCounty" className="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                      <div className="accordion-body">
+                        <select
+                          className="form-select form-select-sm"
+                          value={filters.county?.[0] || ''}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setFilters((prev) => ({ ...prev, county: value ? [value] : [] }))
+                          }}
+                        >
+                          <option value="">All Counties</option>
+                          {counties.map((county) => (
+                            <option key={county} value={county}>{county}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="accordion-item">
+                    <h2 className="accordion-header" id="headingParty">
+                      <button className="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseParty">
+                        By Party
+                      </button>
+                    </h2>
+                    <div id="collapseParty" className="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                      <div className="accordion-body" style={{ maxHeight: 220, overflowY: 'auto' }}>
+                        {parties.map((party) => {
+                          const checked = (filters.party || []).includes(party.value)
+                          return (
+                            <div key={party.value} className="form-check">
+                              <input
+                                className="form-check-input"
+                                type="checkbox"
+                                checked={checked}
+                                id={`party_${party.value}`}
+                                onChange={() => handleFilterValueToggle('party', party.value)}
+                              />
+                              <label className="form-check-label" htmlFor={`party_${party.value}`}>
+                                {party.label}
+                              </label>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="accordion-item">
+                    <h2 className="accordion-header" id="headingVote">
+                      <button className="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseVote">
+                        By Vote Position (Impeachment)
+                      </button>
+                    </h2>
+                    <div id="collapseVote" className="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                      <div className="accordion-body">
+                        {['Yes', 'No', 'Abstain'].map((label) => {
+                          const checked = (filters.impeachment || []).includes(label)
+                          return (
+                            <div key={label} className="form-check">
+                              <input
+                                className="form-check-input"
+                                type="checkbox"
+                                checked={checked}
+                                id={`vote_${label}`}
+                                onChange={() => handleFilterValueToggle('impeachment', label)}
+                              />
+                              <label className="form-check-label" htmlFor={`vote_${label}`}>
+                                {label}
+                              </label>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary w-100 mt-3"
+                  onClick={handleResetFilters}
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
         </aside>
-      </main>
+
+        <div
+          className="offcanvas offcanvas-start"
+          tabIndex="-1"
+          id="dashboardSidebar"
+          aria-labelledby="dashboardSidebarLabel"
+          style={{ width: 350 }}
+        >
+          <div className="offcanvas-header">
+            <h5 className="offcanvas-title" id="dashboardSidebarLabel">Dashboard</h5>
+            <button type="button" className="btn-close" data-bs-dismiss="offcanvas" aria-label="Close" />
+          </div>
+          <div className="offcanvas-body p-0">
+            <div className="p-3 overflow-auto" style={{ maxHeight: 'calc(100vh - 70px)' }}>
+              <div className="mb-3">
+                <div className="btn-group w-100" role="group" aria-label="Map view">
+                  {['party', 'budget', 'impeachment', 'registered_voters'].map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`btn btn-sm ${colorMode === mode ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => handleColorModeChange(mode)}
+                    >
+                      {(COLOR_MODES.find((item) => item.key === mode)?.label || mode).replace('2024 ', '')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card shadow-sm mb-3">
+                <div className="card-body">
+                  <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                    Key Stats
+                  </div>
+                  <div className="row g-3 mt-1">
+                    <div className="col-6">
+                      <div className="text-secondary" style={{ fontSize: 12 }}>Total Constituencies</div>
+                      <div className="fw-bold" style={{ fontSize: 20 }}>{totalConstituencies || 0}</div>
+                    </div>
+                    <div className="col-6">
+                      <div className="text-secondary" style={{ fontSize: 12 }}>Filtered Constituencies</div>
+                      <div className="fw-bold" style={{ fontSize: 20 }}>{filteredConstituencies || 0}</div>
+                    </div>
+                    <div className="col-12">
+                      <div className="text-secondary" style={{ fontSize: 12 }}>Registered Voters (filtered)</div>
+                      <div className="fw-bold" style={{ fontSize: 20 }}>{summary.registeredVoters ? formatNumber(summary.registeredVoters) : 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card shadow-sm mb-3">
+                <div className="card-body">
+                  <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                    Filter Map
+                  </div>
+                  <div className="accordion mt-2" id="filterAccordionMobile">
+                    <div className="accordion-item">
+                      <h2 className="accordion-header" id="headingCountyMobile">
+                        <button className="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCountyMobile">
+                          By County
+                        </button>
+                      </h2>
+                      <div id="collapseCountyMobile" className="accordion-collapse collapse" data-bs-parent="#filterAccordionMobile">
+                        <div className="accordion-body">
+                          <select
+                            className="form-select form-select-sm"
+                            value={filters.county?.[0] || ''}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setFilters((prev) => ({ ...prev, county: value ? [value] : [] }))
+                            }}
+                          >
+                            <option value="">All Counties</option>
+                            {counties.map((county) => (
+                              <option key={county} value={county}>{county}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="accordion-item">
+                      <h2 className="accordion-header" id="headingPartyMobile">
+                        <button className="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePartyMobile">
+                          By Party
+                        </button>
+                      </h2>
+                      <div id="collapsePartyMobile" className="accordion-collapse collapse" data-bs-parent="#filterAccordionMobile">
+                        <div className="accordion-body" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                          {parties.map((party) => {
+                            const checked = (filters.party || []).includes(party.value)
+                            return (
+                              <div key={party.value} className="form-check">
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={checked}
+                                  id={`party_mobile_${party.value}`}
+                                  onChange={() => handleFilterValueToggle('party', party.value)}
+                                />
+                                <label className="form-check-label" htmlFor={`party_mobile_${party.value}`}>
+                                  {party.label}
+                                </label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="accordion-item">
+                      <h2 className="accordion-header" id="headingVoteMobile">
+                        <button className="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseVoteMobile">
+                          By Vote Position (Impeachment)
+                        </button>
+                      </h2>
+                      <div id="collapseVoteMobile" className="accordion-collapse collapse" data-bs-parent="#filterAccordionMobile">
+                        <div className="accordion-body">
+                          {['Yes', 'No', 'Abstain'].map((label) => {
+                            const checked = (filters.impeachment || []).includes(label)
+                            return (
+                              <div key={label} className="form-check">
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={checked}
+                                  id={`vote_mobile_${label}`}
+                                  onChange={() => handleFilterValueToggle('impeachment', label)}
+                                />
+                                <label className="form-check-label" htmlFor={`vote_mobile_${label}`}>
+                                  {label}
+                                </label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="d-flex gap-2 mt-3">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary flex-grow-1"
+                      onClick={handleResetFilters}
+                    >
+                      Clear Filters
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      data-bs-dismiss="offcanvas"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <main className="flex-grow-1 position-relative overflow-hidden">
+          <div className="d-flex flex-column h-100 p-3">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <div className="d-flex align-items-center gap-2">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={handleResetMapView}>
+                  Reset view
+                </button>
+                {selectedFeature && (
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={handleZoomToSelected}>
+                    Zoom to selected
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="map-frame flex-grow-1 position-relative overflow-hidden">
+              <div className="position-relative h-100 w-100">
+                <div ref={mapContainerRef} className="map-canvas" />
+                {hoveredFeature && popupPosition.x > 0 && popupPosition.y > 0 && (
+                  <PopupContent
+                    feature={hoveredFeature}
+                    colorMode={colorMode}
+                    position={popupPosition}
+                    formatNumber={formatNumber}
+                  />
+                )}
+              </div>
+              <MapLegend
+                mode={colorMode}
+                parties={parties}
+                features={features}
+                registeredVoterClassification={registeredVoterClassification}
+              />
+            </div>
+
+            {(loading || error) && (
+              <div className="position-absolute top-0 start-0 end-0 bottom-0 bg-white bg-opacity-75 d-flex align-items-center justify-content-center">
+                {loading ? (
+                  <div className="d-flex align-items-center gap-3">
+                    <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12" />
+                    <div className="fw-semibold text-dark">Loading map data…</div>
+                  </div>
+                ) : (
+                  <div className="text-danger fw-semibold">{error}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
 
       {aboutOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -1376,6 +1395,83 @@ function App() {
           </div>
         </div>
       )}
+
+      <div
+        className="modal fade"
+        tabIndex="-1"
+        aria-hidden="true"
+        ref={modalElementRef}
+        onClick={(e) => {
+          if (e.target === modalElementRef.current) {
+            setSelectedFeature(null)
+          }
+        }}
+      >
+        <div className="modal-dialog modal-dialog-scrollable modal-lg">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">
+                {selectedFeature?.properties?.display_name || selectedFeature?.properties?.name || 'Constituency'}
+              </h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setSelectedFeature(null)}
+              />
+            </div>
+            <div className="modal-body">
+              {selectedFeature ? (
+                <div className="row g-3">
+                  <div className="col-12 col-md-6">
+                    <div className="card border-0 bg-light">
+                      <div className="card-body">
+                        <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                          Member of Parliament
+                        </div>
+                        <div className="fw-bold" style={{ fontSize: 18 }}>{selectedFeature.properties?.mp || 'N/A'}</div>
+                        <div className="mt-2 text-secondary" style={{ fontSize: 13 }}>
+                          County: <span className="text-dark fw-semibold">{selectedFeature.properties?.county || 'N/A'}</span>
+                        </div>
+                        <div className="text-secondary" style={{ fontSize: 13 }}>
+                          Registered Voters: <span className="text-dark fw-semibold">{formatNumber(selectedFeature.properties?.registered_voters)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <div className="card border-0 bg-light">
+                      <div className="card-body">
+                        <div className="text-uppercase text-secondary fw-semibold" style={{ fontSize: 12 }}>
+                          Party & Votes
+                        </div>
+                        <div className="mt-2 d-flex align-items-center gap-2">
+                          <span style={{ width: 10, height: 10, borderRadius: 999, background: PARTY_COLORS[selectedFeature.properties?.party_key] || PARTY_COLORS.others, display: 'inline-block' }} />
+                          <span className="fw-semibold">{selectedFeature.properties?.party_label || 'N/A'}</span>
+                        </div>
+                        <div className="mt-3" style={{ fontSize: 13 }}>
+                          <div>
+                            Impeachment: <span className="fw-semibold">{selectedFeature.properties?.impeachment_label || 'N/A'}</span>
+                          </div>
+                          <div>
+                            Budget 2024: <span className="fw-semibold">{selectedFeature.properties?.budget_label || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-secondary">Select a constituency on the map to view details.</div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setSelectedFeature(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
