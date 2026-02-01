@@ -611,10 +611,8 @@ function App() {
             registeredVoterClassification,
           ),
         onEachFeature: (feature, layerInstance) => {
-          let hoverTimeout = null
-
           layerInstance.on('mouseover', (e) => {
-            if (hoverTimeout) clearTimeout(hoverTimeout)
+            if (window.currentHoverTimeout) clearTimeout(window.currentHoverTimeout)
             setHoveredFeature(feature)
             if (mapRef.current && mapContainerRef.current) {
               const containerPoint = mapRef.current.latLngToContainerPoint(e.latlng)
@@ -626,10 +624,10 @@ function App() {
           })
 
           layerInstance.on('mouseout', () => {
-            // Small delay to prevent flickering
-            hoverTimeout = setTimeout(() => {
+            // Longer delay to prevent flickering and allow cursor to move over popup
+            window.currentHoverTimeout = setTimeout(() => {
               setHoveredFeature(null)
-            }, 100)
+            }, 300)
           })
 
           layerInstance.on('mousemove', (e) => {
@@ -1576,7 +1574,7 @@ const PopupContent = ({ feature, colorMode, position, formatNumber }) => {
 
   return (
     <div
-      className="absolute z-[1000] border-2 border-gray-400 rounded shadow-lg p-2 pointer-events-none"
+      className="absolute z-[1000] border-2 border-gray-400 rounded shadow-lg p-2"
       style={{
         left: `${position.x + 15}px`,
         top: `${position.y - 10}px`,
@@ -1585,6 +1583,19 @@ const PopupContent = ({ feature, colorMode, position, formatNumber }) => {
         minWidth: '140px',
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(4px)',
+        pointerEvents: 'auto',
+      }}
+      onMouseEnter={() => {
+        // Keep popup open when hovering over it
+        if (window.currentHoverTimeout) {
+          clearTimeout(window.currentHoverTimeout)
+        }
+      }}
+      onMouseLeave={() => {
+        // Close popup with delay when leaving popup
+        window.currentHoverTimeout = setTimeout(() => {
+          setHoveredFeature(null)
+        }, 200)
       }}
     >
       <div className="text-xs space-y-0.5">
